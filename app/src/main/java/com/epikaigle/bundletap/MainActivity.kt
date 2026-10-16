@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         sourceAllowed = packageManager.canRequestPackageInstalls()
         InstallUpdates.restore(this)
         deferredUri = savedInstanceState?.getString("deferred_uri")?.let(Uri::parse)
+        selectedUri = savedInstanceState?.getString("selected_uri")?.let(Uri::parse)
 
         setContent {
             BundleTapScreen(
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("deferred_uri", deferredUri?.toString())
+        outState.putString("selected_uri", selectedUri?.toString())
         super.onSaveInstanceState(outState)
     }
 

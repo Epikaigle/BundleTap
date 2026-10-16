@@ -52,7 +52,7 @@ object InstallUpdates {
         val fileName = prefs.getString("file_name", null)
         val interrupted = phase == InstallPhase.PREPARING ||
             (phase == InstallPhase.AWAITING_CONFIRMATION && pendingConfirmation == null) ||
-            phase == InstallPhase.NEEDS_PERMISSION
+            false
         if (interrupted) {
             current.value = InstallUpdate(
                 InstallPhase.ERROR,
