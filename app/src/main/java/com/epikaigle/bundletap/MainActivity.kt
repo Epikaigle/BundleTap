@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         sourceAllowed = packageManager.canRequestPackageInstalls()
         installer.onPermissionReturned()
+        InstallUpdates.expireUnansweredSession(this)
     }
 
     private fun handleIncoming(incoming: Intent?) {

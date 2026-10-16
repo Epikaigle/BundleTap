@@ -23,6 +23,8 @@ data class InstallUpdate(
 object InstallUpdates {
     private const val PREFS = "installation"
     private const val ACTIVE_SESSION = "active_session"
+    private const val LAST_UPDATE = "last_update_at"
+    private const val STALE_AFTER_MS = 20L * 60 * 1000
 
     val current = MutableStateFlow(
         InstallUpdate(InstallPhase.READY, "Prêt à installer", "Choisis un fichier pour commencer.")
@@ -40,6 +42,7 @@ object InstallUpdates {
             .putString("message", update.message)
             .putString("file_name", update.fileName)
             .putString("details", update.details)
+            .putLong(LAST_UPDATE, System.currentTimeMillis())
             .apply()
     }
 
@@ -51,7 +54,8 @@ object InstallUpdates {
         if (phase == InstallPhase.READY) return
         val fileName = prefs.getString("file_name", null)
         val interrupted = phase == InstallPhase.PREPARING ||
-            (phase == InstallPhase.AWAITING_CONFIRMATION && pendingConfirmation == null)
+            (phase == InstallPhase.AWAITING_CONFIRMATION && pendingConfirmation == null) ||
+            phase == InstallPhase.NEEDS_PERMISSION
         if (interrupted) {
             current.value = InstallUpdate(
                 InstallPhase.ERROR,
@@ -68,6 +72,22 @@ object InstallUpdates {
                 prefs.getString("details", null)
             )
         }
+        expireUnansweredSession(context)
+    }
+
+    /** A result callback may be lost if Android kills the process mid-install. */
+    fun expireUnansweredSession(context: Context) {
+        if (current.value.phase != InstallPhase.INSTALLING) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val last = prefs.getLong(LAST_UPDATE, 0L)
+        if (last <= 0 || System.currentTimeMillis() - last < STALE_AFTER_MS) return
+        pendingConfirmation = null
+        clearSession(context)
+        publish(context, InstallUpdate(
+            InstallPhase.ERROR,
+            "Résultat non reçu",
+            "Android n’a pas renvoyé de résultat. Vérifie si l’application est installée avant de réessayer."
+        ))
     }
 
     fun activateSession(context: Context, id: Int) {
