@@ -8,47 +8,93 @@ import org.junit.Test
 class ApkSelectorTest {
     private val abis = listOf("arm64-v8a", "armeabi-v7a")
 
-    @Test fun selectsArm64NotX86() {
-        val input = listOf(
-            "base.apk",
-            "split_config.arm64_v8a.apk",
-            "split_config.x86.apk",
-            "split_config.fr.apk"
+    @Test fun apkMirrorSelectsArm64AndFrenchEnglish() {
+        val actual = ApkSelector.select(
+            listOf(
+                "base.apk", "split_config.arm64_v8a.apk", "split_config.armeabi_v7a.apk",
+                "split_config.x86.apk", "split_config.fr.apk", "split_config.en.apk",
+                "split_config.ja.apk", "split_myfeature.apk"
+            ), abis, 480, listOf("fr-FR")
         )
-        val actual = ApkSelector.select(input, abis, 480, listOf("fr-FR"))
-        assertEquals(3, actual.size)
-        assertTrue("split_config.arm64_v8a.apk" in actual)
-        assertTrue("split_config.fr.apk" in actual)
+        assertEquals(
+            listOf("base.apk", "split_config.arm64_v8a.apk",
+                "split_config.fr.apk", "split_config.en.apk", "split_myfeature.apk"),
+            actual
+        )
     }
 
-    @Test fun picksClosestScreenDensityAndLocale() {
-        val input = listOf(
-            "splits/base-master.apk",
-            "splits/base-mdpi.apk",
-            "splits/base-xxhdpi.apk",
-            "splits/base-xxxhdpi.apk",
-            "splits/base-en.apk",
-            "splits/base-ja.apk"
+    @Test fun densitySelectionIsIndependentPerFeature() {
+        val actual = ApkSelector.select(
+            listOf(
+                "splits/base-master.apk",
+                "splits/base-mdpi.apk", "splits/base-xxhdpi.apk",
+                "splits/feature-master.apk", "splits/feature-mdpi.apk",
+                "splits/feature-xxxhdpi.apk"
+            ), abis, 500, listOf("fr-FR")
         )
-        val result = ApkSelector.select(input, abis, 500, listOf("fr-FR"))
-        assertTrue("splits/base-xxhdpi.apk" in result)
-        assertTrue("splits/base-mdpi.apk" !in result)
-        assertTrue("splits/base-en.apk" in result)
-        assertTrue("splits/base-ja.apk" !in result)
+        assertTrue("splits/base-xxhdpi.apk" in actual)
+        assertTrue("splits/feature-xxxhdpi.apk" in actual)
+        assertTrue("splits/base-mdpi.apk" !in actual)
+        assertTrue("splits/feature-mdpi.apk" !in actual)
     }
 
-    @Test fun rejectsUnknownBase() {
+    @Test fun xapkSupportsPackageNamedBaseFromManifest() {
+        val actual = ApkSelector.select(
+            listOf(
+                "com.example.app.apk",
+                "config.arm64_v8a.apk",
+                "config.x86.apk",
+                "config.xxhdpi.apk"
+            ), abis, 480, listOf("fr-FR"), "com.example.app.apk"
+        )
+        assertEquals(
+            listOf("com.example.app.apk", "config.arm64_v8a.apk",
+                "config.xxhdpi.apk"), actual
+        )
+    }
+
+    @Test fun abiCanFallbackToSecondaryWhenPrimaryAbsent() {
+        val actual = ApkSelector.select(
+            listOf("base.apk", "split_config.armeabi_v7a.apk", "split_config.x86.apk"),
+            abis, 480, listOf("fr-FR")
+        )
+        assertEquals(listOf("base.apk", "split_config.armeabi_v7a.apk"), actual)
+    }
+
+    @Test fun featureNameThatLooksLikeLanguageIsPreserved() {
+        val actual = ApkSelector.select(
+            listOf("base.apk", "split_pro.apk", "split_config.fr.apk"),
+            abis, 480, listOf("fr")
+        )
+        assertTrue(actual.contains("split_pro.apk"))
+    }
+
+    @Test fun ambiguousOrMissingBaseRejected() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ApkSelector.select(listOf("one.apk", "two.apk"), abis, 480, listOf("fr"))
+        }
         assertThrows(IllegalArgumentException::class.java) {
             ApkSelector.select(
-                listOf("one.apk", "two.apk"), abis, 480, listOf("fr")
+                listOf("base.apk", "config.fr.apk"), abis, 480, listOf("fr"),
+                "com.example.missing.apk"
             )
         }
     }
 
-    @Test fun universalOnly() {
-        val result = ApkSelector.select(
-            listOf("universal.apk", "other.apk"), abis, 480, listOf("fr")
+    @Test fun universalVariantIsNotMixedWithSplits() {
+        assertEquals(
+            listOf("universal.apk"),
+            ApkSelector.select(
+                listOf("universal.apk", "base.apk", "config.fr.apk"),
+                abis, 480, listOf("fr")
+            )
         )
-        assertEquals(listOf("universal.apk"), result)
+    }
+
+    @Test fun oneApkArchiveIsAccepted() {
+        assertEquals(
+            listOf("app.apk"),
+            ApkSelector.select(listOf("app.apk"), abis, 480, listOf("fr"))
+        )
     }
 }

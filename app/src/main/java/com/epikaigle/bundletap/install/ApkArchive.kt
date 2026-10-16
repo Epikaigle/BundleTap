@@ -4,12 +4,16 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.Locale
 import java.util.UUID
-import java.util.zip.ZipInputStream
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 
 data class PreparedApks(
     val name: String,
@@ -19,77 +23,68 @@ data class PreparedApks(
     fun dispose() { workspace.deleteRecursively() }
 }
 
+/**
+ * Copies the compressed archive once, then reads its central directory with ZipFile.
+ * Only device-compatible APKs are extracted. No ZIP entry pathname is used as a
+ * filesystem pathname. Strict size/CRC checks prevent corrupt or oversized inputs.
+ */
 class ApkArchive(private val context: Context) {
     companion object {
-        private const val MAX_FILES = 350
-        private const val MAX_APK_BYTES = 700L * 1024 * 1024
-        private const val MAX_TOTAL_BYTES = 1500L * 1024 * 1024
-        private const val MAX_OTHER_BYTES = 32L * 1024 * 1024
+        private const val MAX_ENTRIES = 400
+        private const val MAX_ARCHIVE_BYTES = 1024L * 1024 * 1024
+        private const val MAX_APK_BYTES = 800L * 1024 * 1024
+        private const val MAX_EXTRACT_BYTES = 1500L * 1024 * 1024
+        private const val MAX_METADATA_BYTES = 256L * 1024
     }
 
     fun displayName(uri: Uri): String {
-        val cursor = context.contentResolver.query(
+        context.contentResolver.query(
             uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-        )
-        cursor?.use {
+        )?.use {
             if (it.moveToFirst()) {
                 val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index >= 0) return it.getString(index) ?: "Fichier Android"
+                if (index >= 0) return (it.getString(index) ?: "Fichier Android")
+                    .substringAfterLast('/').take(180)
             }
         }
-        return uri.lastPathSegment?.substringAfterLast('/') ?: "Fichier Android"
+        return (uri.lastPathSegment?.substringAfterLast('/') ?: "Fichier Android").take(180)
     }
 
     fun prepare(uri: Uri): PreparedApks {
         val name = displayName(uri)
-        val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        require(extension in setOf("apk", "apks", "apkm", "xapk")) {
-            "Format non pris en charge. Utilise APK, APKM, APKS ou XAPK."
+        val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        require(ext in setOf("apk", "apks", "apkm", "xapk")) {
+            "Format non pris en charge : APK, APKM, APKS ou XAPK uniquement."
         }
-
-        val workspace = File(context.cacheDir, "installation-" + UUID.randomUUID()).apply {
-            check(mkdirs()) { "Impossible de créer le dossier temporaire." }
-        }
+        cleanAbandonedCache()
+        val workspace = File(context.cacheDir, "installation-" + UUID.randomUUID())
+        check(workspace.mkdir()) { "Impossible de créer le cache temporaire." }
         try {
-            val input = context.contentResolver.openInputStream(uri)
-                ?: throw IllegalArgumentException("Impossible de lire ce fichier.")
-            val apks = input.use { stream ->
-                if (extension == "apk") {
-                    val single = File(workspace, "base.apk")
-                    FileOutputStream(single).use { out ->
-                        copyBounded(stream, out, MAX_APK_BYTES)
-                    }
-                    listOf(single)
+            val source = context.contentResolver.openInputStream(uri)
+                ?: throw IllegalArgumentException("Fichier illisible ou accès expiré.")
+            val apks = source.use { input ->
+                if (ext == "apk") {
+                    val output = File(workspace, "base.apk")
+                    FileOutputStream(output).use { boundedCopy(input, it, MAX_APK_BYTES) }
+                    listOf(output)
                 } else {
-                    val discovered = unpackArchive(stream, workspace)
-                    if (discovered.isEmpty()) {
-                        throw IllegalArgumentException("Archive sans APK installable.")
+                    val staged = File(workspace, "archive.zip")
+                    FileOutputStream(staged).use { boundedCopy(input, it, MAX_ARCHIVE_BYTES) }
+                    val selected = ZipFile(staged).use { zip ->
+                        extractSelected(zip, ext, workspace)
                     }
-                    val deviceLanguages = context.resources.configuration.locales
-                    val tags = (0 until deviceLanguages.size()).map {
-                        deviceLanguages[it].toLanguageTag()
-                    }
-                    val chosen = ApkSelector.select(
-                        paths = discovered.map { it.first },
-                        supportedAbis = Build.SUPPORTED_ABIS.toList(),
-                        densityDpi = context.resources.displayMetrics.densityDpi,
-                        locales = tags
-                    ).toSet()
-                    val ordered = chosen.map { key ->
-                        discovered.first { it.first == key }.second
-                    }
-                    ordered
+                    check(staged.delete()) { "Impossible de nettoyer le cache compressé." }
+                    selected
                 }
             }
-            require(apks.isNotEmpty()) { "Aucun APK compatible pour le Pixel." }
-            // Verify that the selected base is a real, parsable installable package.
-            val baseApk = apks.first()
-            val pkg = context.packageManager.getPackageArchiveInfo(baseApk.absolutePath, 0)
-                ?: throw IllegalArgumentException("APK principal invalide ou illisible.")
-            require(pkg.packageName.isNotBlank()) { "Nom du paquet APK manquant." }
-            require(pkg.applicationInfo?.minSdkVersion?.let { it <= Build.VERSION.SDK_INT } != false) {
-                "Cette application nécessite une version Android plus récente."
-            }
+            require(apks.isNotEmpty()) { "Aucun APK compatible avec cet appareil." }
+            val info = context.packageManager.getPackageArchiveInfo(
+                apks.first().absolutePath, 0
+            ) ?: throw IllegalArgumentException("APK principal invalide ou endommagé.")
+            require(info.packageName.isNotBlank()) { "Identifiant d'application invalide." }
+            require(info.applicationInfo?.minSdkVersion?.let {
+                it <= Build.VERSION.SDK_INT
+            } != false) { "Ce fichier demande une version Android plus récente." }
             return PreparedApks(name, apks, workspace)
         } catch (error: Exception) {
             workspace.deleteRecursively()
@@ -97,73 +92,146 @@ class ApkArchive(private val context: Context) {
         }
     }
 
-    private fun unpackArchive(stream: InputStream, workspace: File): List<Pair<String, File>> {
-        val discovered = mutableListOf<Pair<String, File>>()
-        val seen = mutableSetOf<String>()
-        var total = 0L
-        var entries = 0
-        ZipInputStream(stream.buffered()).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (++entries > MAX_FILES) {
-                    throw IllegalArgumentException("Archive contenant trop de fichiers.")
+    private fun extractSelected(zip: ZipFile, extension: String, dir: File): List<File> {
+        val names = mutableSetOf<String>()
+        val entries = linkedMapOf<String, ZipEntry>()
+        var uncompressedTotal = 0L
+        val enumeration = zip.entries()
+        while (enumeration.hasMoreElements()) {
+            val entry = enumeration.nextElement()
+            require(entries.size < MAX_ENTRIES) { "L'archive contient trop de fichiers." }
+            val name = entry.name.replace('\\', '/')
+            val lower = name.lowercase(Locale.ROOT)
+            require(names.add(lower)) { "Noms de fichiers dupliqués dans l'archive." }
+            if (entry.isDirectory) continue
+            require(!lower.endsWith(".obb")) {
+                "Cette archive comporte des données OBB non prises en charge."
+            }
+            require(!entry.name.startsWith("/") && !entry.name.contains("\u0000")) {
+                "Nom de fichier suspect dans l'archive."
+            }
+            val limit = if (lower.endsWith(".apk")) MAX_APK_BYTES else MAX_METADATA_BYTES
+            require(entry.size <= limit || entry.size < 0) {
+                "L'archive contient un fichier trop volumineux."
+            }
+            if (entry.size >= 0) {
+                uncompressedTotal += entry.size
+                require(uncompressedTotal <= MAX_EXTRACT_BYTES) {
+                    "Taille décompressée trop importante."
                 }
-                if (entry.isDirectory) {
-                    zip.closeEntry()
-                    continue
+            }
+            entries[name] = entry
+        }
+        val apkNames = entries.keys.filter { it.endsWith(".apk", ignoreCase = true) }
+        require(apkNames.isNotEmpty()) { "Archive sans fichier APK." }
+        val meta = if (extension == "xapk") {
+            val entry = entries.entries.firstOrNull {
+                it.key.equals("manifest.json", ignoreCase = true)
+            }?.value
+            entry?.let {
+                val bytes = zip.getInputStream(it).use { input ->
+                    readLimited(input, MAX_METADATA_BYTES)
                 }
-                val entryName = entry.name.replace('\\', '/')
-                val lowered = entryName.lowercase(Locale.ROOT)
-                if (lowered.endsWith(".obb")) {
-                    throw IllegalArgumentException(
-                        "Les archives contenant des données OBB ne sont pas prises en charge."
-                    )
-                }
-                if (!seen.add(lowered)) {
-                    throw IllegalArgumentException("Entrée dupliquée dans l'archive.")
-                }
-                val isApk = lowered.endsWith(".apk")
-                val limit = if (isApk) MAX_APK_BYTES else MAX_OTHER_BYTES
-                if (entry.size > limit) throw IllegalArgumentException("Fichier d'archive trop volumineux.")
+                JSONObject(bytes.toString(Charsets.UTF_8))
+            }
+        } else null
 
-                val output = if (isApk) File.createTempFile("split-", ".apk", workspace) else null
-                try {
-                    val sink = if (output != null) FileOutputStream(output) else null
-                    var size = 0L
-                    sink.use { out ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val read = zip.read(buffer)
-                            if (read == -1) break
-                            size += read
-                            total += read
-                            if (size > limit || total > MAX_TOTAL_BYTES) {
-                                throw IllegalArgumentException("Archive trop volumineuse ou suspecte.")
-                            }
-                            out?.write(buffer, 0, read)
-                        }
-                    }
-                    if (output != null) discovered += entryName to output
-                } catch (error: Exception) {
-                    output?.delete()
-                    throw error
-                } finally {
-                    zip.closeEntry()
+        val splitMeta = meta?.optJSONArray("split_apks")
+        var declaredBase: String? = null
+        if (splitMeta != null) {
+            for (i in 0 until splitMeta.length()) {
+                val item = splitMeta.optJSONObject(i) ?: continue
+                if (item.optString("id").equals("base", ignoreCase = true)) {
+                    declaredBase = item.optString("file").takeIf { it.isNotBlank() }
+                    break
                 }
             }
         }
-        return discovered
+        // Some XAPK manifests list the base only as <package_name>.apk.
+        if (declaredBase == null && extension == "xapk") {
+            val pkg = meta?.optString("package_name")?.takeIf { it.isNotBlank() }
+            if (pkg != null) {
+                val expected = "$pkg.apk"
+                declaredBase = apkNames.singleOrNull {
+                    it.substringAfterLast('/').equals(expected, ignoreCase = true)
+                }
+            }
+        }
+
+        val languages = context.resources.configuration.locales
+        val tags = (0 until languages.size()).map { languages[it].toLanguageTag() }
+        val selected = ApkSelector.select(
+            paths = apkNames,
+            supportedAbis = Build.SUPPORTED_ABIS.toList(),
+            densityDpi = context.resources.displayMetrics.densityDpi,
+            locales = tags,
+            baseHint = declaredBase
+        )
+        var copied = 0L
+        return selected.mapIndexed { index, name ->
+            val entry = checkNotNull(entries[name]) { "Fichier APK manquant dans l'archive." }
+            val target = File(dir, "apk-$index.apk")
+            val crc = CRC32()
+            zip.getInputStream(entry).use { input ->
+                FileOutputStream(target).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var size = 0L
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        size += n
+                        copied += n
+                        require(size <= MAX_APK_BYTES && copied <= MAX_EXTRACT_BYTES) {
+                            "L'archive dépasse la taille maximale autorisée."
+                        }
+                        crc.update(buffer, 0, n)
+                        output.write(buffer, 0, n)
+                    }
+                    require(entry.size < 0 || size == entry.size) {
+                        "Fichier APK tronqué."
+                    }
+                }
+            }
+            require(entry.crc < 0 || entry.crc == crc.value) {
+                "Vérification d'intégrité du fichier APK échouée."
+            }
+            target
+        }
     }
 
-    private fun copyBounded(input: InputStream, out: FileOutputStream, max: Long) {
-        var copied = 0L
+    private fun boundedCopy(input: InputStream, output: FileOutputStream, limit: Long) {
+        var total = 0L
         val buffer = ByteArray(64 * 1024)
         while (true) {
             val n = input.read(buffer)
-            if (n == -1) break
-            copied += n
-            if (copied > max) throw IllegalArgumentException("APK trop volumineux.")
-            out.write(buffer, 0, n)
+            if (n < 0) break
+            total += n
+            require(total <= limit) { "Fichier trop volumineux." }
+            output.write(buffer, 0, n)
+        }
+    }
+
+    private fun readLimited(input: InputStream, max: Long): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= max) { "Manifeste XAPK trop volumineux." }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
+    }
+
+    private fun cleanAbandonedCache() {
+        val threshold = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+        context.cacheDir.listFiles()?.forEach { file ->
+            if (file.isDirectory && file.name.startsWith("installation-") &&
+                file.lastModified() < threshold) {
+                file.deleteRecursively()
+            }
         }
     }
 }
