@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val personalSigningStore = providers.environmentVariable("BUNDLETAP_SIGNING_STORE").orNull
+
 android {
     namespace = "com.epikaigle.bundletap"
     compileSdk = 37
@@ -11,8 +13,8 @@ android {
         applicationId = "com.epikaigle.bundletap"
         minSdk = 37
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -25,8 +27,21 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        if (!personalSigningStore.isNullOrBlank()) {
+            create("personalRelease") {
+                storeFile = file(personalSigningStore)
+                storePassword = providers.environmentVariable("BUNDLETAP_SIGNING_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("BUNDLETAP_SIGNING_ALIAS").orNull
+                keyPassword = providers.environmentVariable("BUNDLETAP_SIGNING_KEY_PASSWORD").orNull
+            }
+        }
+    }
     buildTypes {
         release {
+            if (!personalSigningStore.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("personalRelease")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }

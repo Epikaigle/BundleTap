@@ -153,7 +153,7 @@ object ApkSelector {
         val lang = match.groupValues[1]
         if (lang !in languages) return null
         val prefix = s.substring(0, match.range.first)
-        return if (prefix.endsWith("config") || prefix.startsWith("base-") ||
+        return if (prefix.endsWith("config") || prefix == "base" || prefix.startsWith("base-") ||
             prefix.startsWith("base_") || prefix.startsWith("base.")) lang else null
     }
 }

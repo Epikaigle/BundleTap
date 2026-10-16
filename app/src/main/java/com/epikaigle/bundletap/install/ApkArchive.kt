@@ -99,7 +99,7 @@ class ApkArchive(private val context: Context) {
         val enumeration = zip.entries()
         while (enumeration.hasMoreElements()) {
             val entry = enumeration.nextElement()
-            require(entries.size < MAX_ENTRIES) { "L'archive contient trop de fichiers." }
+            require(names.size < MAX_ENTRIES) { "L'archive contient trop de fichiers." }
             val name = entry.name.replace('\\', '/')
             val lower = name.lowercase(Locale.ROOT)
             require(names.add(lower)) { "Noms de fichiers dupliqués dans l'archive." }
