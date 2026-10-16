@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -234,7 +235,7 @@ private fun InstallationCard(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold)
                     if (working) {
-                        Text("Ne ferme pas cette fenêtre",
+                        Text(if (update.phase == InstallPhase.PREPARING) "Analyse du fichier" else "Traitement Android",
                             color = Subtle, style = MaterialTheme.typography.labelSmall)
                     }
                 }
@@ -408,4 +409,43 @@ private fun PrivacyAndSupport(
             textAlign = TextAlign.Center
         )
     }
+}
+
+
+@Preview(name = "Accueil Pixel 7 Pro", showBackground = true, widthDp = 412, heightDp = 892)
+@Composable
+private fun WelcomePreview() {
+    BundleTapScreen(
+        update = InstallUpdate(InstallPhase.READY, "Prêt à installer", "Choisis un fichier."),
+        busy = false, sourceAllowed = false, canConfirm = false, canRetry = false,
+        onSelectFile = {}, onEnableSource = {}, onConfirm = {}, onRetry = {}, onReset = {}
+    )
+}
+
+@Preview(name = "Erreur et reprise", showBackground = true, widthDp = 412, heightDp = 892)
+@Composable
+private fun ErrorPreview() {
+    BundleTapScreen(
+        update = InstallUpdate(
+            InstallPhase.ERROR, "Installation impossible",
+            "Le fichier est incomplet ou ses modules ne sont pas compatibles.",
+            fileName = "example-release-arm64.apkm", details = "INSTALL_FAILED_INVALID_APK"
+        ),
+        busy = false, sourceAllowed = true, canConfirm = false, canRetry = true,
+        onSelectFile = {}, onEnableSource = {}, onConfirm = {}, onRetry = {}, onReset = {}
+    )
+}
+
+@Preview(name = "Confirmation Android", showBackground = true, widthDp = 412, heightDp = 892)
+@Composable
+private fun ConfirmationPreview() {
+    BundleTapScreen(
+        update = InstallUpdate(
+            InstallPhase.AWAITING_CONFIRMATION, "Confirmation requise",
+            "Valide l'installation dans la fenêtre de sécurité Android.",
+            fileName = "example.apks"
+        ),
+        busy = false, sourceAllowed = true, canConfirm = true, canRetry = false,
+        onSelectFile = {}, onEnableSource = {}, onConfirm = {}, onRetry = {}, onReset = {}
+    )
 }
