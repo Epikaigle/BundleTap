@@ -1,5 +1,14 @@
 # BundleTap
 
+## Interface 1.1 — optimisée pour Pixel 7 Pro
+
+L'application utilise un écran unique et se réorganise selon la progression : accueil → permission Android (si nécessaire) → préparation → confirmation du système → succès ou erreur. Les erreurs disposent d'un texte compréhensible, d'une action pour recommencer et, si Android en fournit, de détails techniques repliables. Les boutons inutilisables sont masqués pendant l'installation.
+
+L'interface est sombre, compatible avec le grossissement du texte, les zones tactiles Material d'au moins 48 dp et les annonces d'état TalkBack. Android conserve le contrôle de la confirmation de sécurité. Trois previews Compose (accueil, erreur, confirmation) sont disponibles dans Android Studio.
+
+**Tests** : les tests unitaires sont exécutés par GitHub Actions ; les tests d'interaction Compose sont **compilés**, mais ne sont pas exécutés sans émulateur ou appareil Android. Un test sur le Pixel 7 Pro reste nécessaire avant de considérer l'expérience validée en conditions réelles.
+
+
 Application native Kotlin + Jetpack Compose pour installer des APK et certains bundles sur **Pixel 7 Pro / Android 17 (API 37)**.
 
 ## Utilisation
@@ -33,9 +42,9 @@ La signature debug créée sur le runner GitHub Actions peut varier d'un build �
 
 Installe Android Studio compatible AGP 9.3, SDK Android 37, JDK 17, Gradle 9.5. Ouvre la racine de ce dépôt dans Android Studio.
 
-Commande : gradle :app:testDebugUnitTest :app:assembleDebug
+Commande : gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
 
-Le workflow GitHub Actions lance automatiquement tests unitaires + compilation debug sur chaque push de main. Le Gradle Wrapper binaire n'est pas fourni : Android Studio ou Gradle 9.5 doivent être installés.
+Le workflow GitHub Actions lance automatiquement les tests unitaires + la compilation debug et celle des tests UI sur chaque push de main. Le Gradle Wrapper binaire n'est pas fourni : Android Studio ou Gradle 9.5 doivent être installés.
 
 ## Confidentialité
 

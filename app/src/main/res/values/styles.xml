@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Avoid the default white launch flash before Compose's dark surface appears. -->
+    <style name="Theme.BundleTap" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bundle_background</item>
+        <item name="android:windowSplashScreenBackground">@color/bundle_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
