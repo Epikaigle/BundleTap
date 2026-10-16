@@ -51,8 +51,7 @@ object InstallUpdates {
         if (phase == InstallPhase.READY) return
         val fileName = prefs.getString("file_name", null)
         val interrupted = phase == InstallPhase.PREPARING ||
-            (phase == InstallPhase.AWAITING_CONFIRMATION && pendingConfirmation == null) ||
-            false
+            (phase == InstallPhase.AWAITING_CONFIRMATION && pendingConfirmation == null)
         if (interrupted) {
             current.value = InstallUpdate(
                 InstallPhase.ERROR,
