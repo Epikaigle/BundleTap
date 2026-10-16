@@ -15,6 +15,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import com.epikaigle.bundletap.install.ApkArchive
+import com.epikaigle.bundletap.install.FileFormats
 import com.epikaigle.bundletap.install.InstallPhase
 import com.epikaigle.bundletap.install.InstallUpdate
 import com.epikaigle.bundletap.install.InstallUpdates
@@ -84,6 +86,17 @@ class MainActivity : ComponentActivity() {
             phase == InstallPhase.AWAITING_CONFIRMATION) {
             Toast.makeText(this, "Termine l'installation en cours avant d'en ouvrir une autre.",
                 Toast.LENGTH_SHORT).show()
+            return
+        }
+        val fileName = runCatching { ApkArchive(this).displayName(uri) }
+            .getOrNull() ?: "Fichier inconnu"
+        if (!FileFormats.isInstallableName(fileName)) {
+            InstallUpdates.publish(this, InstallUpdate(
+                InstallPhase.ERROR,
+                "Format non pris en charge",
+                "Choisis un fichier APK, APKM, APKS ou XAPK.",
+                fileName = fileName
+            ))
             return
         }
         if (installer.needsPermission(uri)) {
