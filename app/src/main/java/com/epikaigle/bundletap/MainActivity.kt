@@ -4,36 +4,29 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.lifecycleScope
-import com.epikaigle.bundletap.install.ApkArchive
+import androidx.compose.runtime.collectAsState
 import com.epikaigle.bundletap.install.InstallPhase
 import com.epikaigle.bundletap.install.InstallUpdate
 import com.epikaigle.bundletap.install.InstallUpdates
-import com.epikaigle.bundletap.install.PackageInstallEngine
 import com.epikaigle.bundletap.ui.BundleTapScreen
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-    private var isBusy by mutableStateOf(false)
-    private var update by mutableStateOf(InstallUpdates.current.value)
+    private val installer: InstallerViewModel by viewModels()
     private var sourceAllowed by mutableStateOf(false)
-    private var selectedUri: Uri? = null
-    private var deferredUri: Uri? = null
 
-    private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) begin(uri)
-    }
+    private val picker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) openFile(uri) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -42,35 +35,23 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         sourceAllowed = packageManager.canRequestPackageInstalls()
-        InstallUpdates.restore(this)
-        deferredUri = savedInstanceState?.getString("deferred_uri")?.let(Uri::parse)
-        selectedUri = savedInstanceState?.getString("selected_uri")?.let(Uri::parse)
-
         setContent {
+            val update by InstallUpdates.current.collectAsState()
             BundleTapScreen(
                 update = update,
-                busy = isBusy,
+                busy = installer.busy,
                 sourceAllowed = sourceAllowed,
                 canConfirm = InstallUpdates.pendingConfirmation != null,
-                canRetry = selectedUri != null && update.phase == InstallPhase.ERROR,
+                canRetry = installer.retry() != null && update.phase == InstallPhase.ERROR,
                 onSelectFile = { picker.launch(arrayOf("*/*")) },
-                onEnableSource = { openUnknownSourcesSettings() },
-                onConfirm = { launchPendingConfirmation() },
-                onRetry = { selectedUri?.let(::begin) },
-                onReset = { clearResult() }
+                onEnableSource = ::openUnknownSourcesSettings,
+                onConfirm = ::launchPendingConfirmation,
+                onRetry = { installer.retry()?.let(::openFile) },
+                onReset = installer::clear
             )
         }
-        lifecycleScope.launch {
-            InstallUpdates.current.collectLatest { update = it }
-        }
-        // Configuration changes must not start a second installation.
+        // Do not process ACTION_VIEW twice after rotating the phone.
         if (savedInstanceState == null) handleIncoming(intent)
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString("deferred_uri", deferredUri?.toString())
-        outState.putString("selected_uri", selectedUri?.toString())
-        super.onSaveInstanceState(outState)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -82,73 +63,33 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         sourceAllowed = packageManager.canRequestPackageInstalls()
-        val pending = deferredUri
-        if (pending != null && sourceAllowed) {
-            deferredUri = null
-            begin(pending)
-        }
+        installer.onPermissionReturned()
     }
 
     private fun handleIncoming(incoming: Intent?) {
         val uri = when (incoming?.action) {
             Intent.ACTION_VIEW -> incoming.data
-            Intent.ACTION_SEND -> incoming.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            Intent.ACTION_SEND -> incoming.getParcelableExtra(
+                Intent.EXTRA_STREAM, Uri::class.java
+            )
             else -> null
         }
-        if (uri != null) begin(uri)
+        if (uri != null) openFile(uri)
     }
 
-    private fun begin(uri: Uri) {
-        if (isBusy || update.phase == InstallPhase.INSTALLING ||
-            update.phase == InstallPhase.AWAITING_CONFIRMATION) return
-        selectedUri = uri
-        val name = runCatching { ApkArchive(this).displayName(uri) }
-            .getOrNull()?.take(160) ?: "Fichier sélectionné"
-        if (!packageManager.canRequestPackageInstalls()) {
-            deferredUri = uri
-            InstallUpdates.publish(this, InstallUpdate(
-                InstallPhase.NEEDS_PERMISSION, "Autorisation nécessaire",
-                "Autorise BundleTap dans les paramètres, puis reviens à l'application.",
-                fileName = name
-            ))
-            openUnknownSourcesSettings()
+    private fun openFile(uri: Uri) {
+        val phase = InstallUpdates.current.value.phase
+        if (installer.busy || phase == InstallPhase.INSTALLING ||
+            phase == InstallPhase.AWAITING_CONFIRMATION) {
+            Toast.makeText(this, "Termine l'installation en cours avant d'en ouvrir une autre.",
+                Toast.LENGTH_SHORT).show()
             return
         }
-        deferredUri = null
-        isBusy = true
-        InstallUpdates.publish(this, InstallUpdate(
-            InstallPhase.PREPARING, "Préparation du fichier",
-            "Analyse et sélection des modules compatibles avec ton Pixel.",
-            fileName = name
-        ))
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val prepared = ApkArchive(this@MainActivity).prepare(uri)
-                    try {
-                        PackageInstallEngine(this@MainActivity).commit(prepared)
-                    } finally {
-                        prepared.dispose()
-                    }
-                }
-            } catch (e: Exception) {
-                InstallUpdates.publish(this@MainActivity, InstallUpdate(
-                    InstallPhase.ERROR, "Fichier non installé",
-                    "Ce fichier n'a pas pu être préparé ou installé. Vérifie son format et réessaie.",
-                    details = e.localizedMessage?.take(400)
-                ))
-            } finally {
-                isBusy = false
-            }
+        if (installer.needsPermission(uri)) {
+            openUnknownSourcesSettings()
+        } else {
+            installer.start(uri)
         }
-    }
-
-    private fun clearResult() {
-        if (isBusy || update.phase == InstallPhase.INSTALLING ||
-            update.phase == InstallPhase.AWAITING_CONFIRMATION) return
-        selectedUri = null
-        deferredUri = null
-        InstallUpdates.reset(this)
     }
 
     private fun openUnknownSourcesSettings() {
