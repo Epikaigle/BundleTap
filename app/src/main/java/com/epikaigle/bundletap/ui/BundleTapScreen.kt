@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -48,15 +46,18 @@ fun BundleTapScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(52.dp).background(
-                        Mint.copy(alpha = .13f), RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Inventory2, null, tint = Mint,
-                            modifier = Modifier.size(30.dp))
+                    Box(
+                        Modifier.size(52.dp).background(
+                            Mint.copy(alpha = .13f), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("B", color = Mint, fontSize = 29.sp,
+                            fontWeight = FontWeight.ExtraBold)
                     }
                     Column {
                         Text("BundleTap", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                        Text("INSTALLATEUR ANDROID", color = Muted, fontSize = 10.sp)
+                        Text("INSTALLATEUR ANDROID", color = Muted, fontSize = 10.sp,
+                            letterSpacing = 1.8.sp)
                     }
                 }
 
@@ -70,8 +71,8 @@ fun BundleTapScreen(
                         Box(Modifier.size(104.dp).background(
                             Mint.copy(alpha = .11f), RoundedCornerShape(30.dp)),
                             contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.FolderOpen, null, tint = Mint,
-                                modifier = Modifier.size(52.dp))
+                            Text("↓", color = Mint, fontSize = 58.sp,
+                                fontWeight = FontWeight.Light)
                         }
                         Spacer(Modifier.height(22.dp))
                         Text("Installer, sans complication.", fontSize = 22.sp,
@@ -84,13 +85,14 @@ fun BundleTapScreen(
                         )
                         Spacer(Modifier.height(26.dp))
                         Button(
-                            onClick = onSelectFile, enabled = !busy,
+                            onClick = onSelectFile,
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth().height(54.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Mint, contentColor = Navy)
                         ) {
-                            Icon(Icons.Rounded.FolderOpen, null)
+                            Text("+", fontSize = 20.sp, fontWeight = FontWeight.Medium)
                             Spacer(Modifier.width(10.dp))
                             Text("Choisir un fichier", fontWeight = FontWeight.SemiBold)
                         }
@@ -104,14 +106,15 @@ fun BundleTapScreen(
                     colors = CardDefaults.cardColors(containerColor = Panel)) {
                     Column(Modifier.fillMaxWidth().padding(20.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
+                            Text(
                                 when (update.phase) {
-                                    InstallPhase.SUCCESS -> Icons.Rounded.CheckCircle
-                                    InstallPhase.ERROR -> Icons.Rounded.ErrorOutline
-                                    else -> Icons.Rounded.Description
-                                }, null,
-                                tint = if (update.phase == InstallPhase.ERROR)
-                                    Color(0xFFFF9D99) else Mint
+                                    InstallPhase.SUCCESS -> "✓"
+                                    InstallPhase.ERROR -> "!"
+                                    else -> "•"
+                                },
+                                color = if (update.phase == InstallPhase.ERROR)
+                                    Color(0xFFFF9D99) else Mint,
+                                fontSize = 26.sp, fontWeight = FontWeight.Bold
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(update.title, fontWeight = FontWeight.Bold,
@@ -152,7 +155,7 @@ fun BundleTapScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Rounded.PhoneAndroid, null, tint = Mint)
+                    Text("▣", color = Mint, fontSize = 26.sp)
                     Column {
                         Text("Conçu pour ton Pixel 7 Pro",
                             fontWeight = FontWeight.SemiBold)
@@ -162,10 +165,9 @@ fun BundleTapScreen(
                 HorizontalDivider(color = Color.White.copy(alpha = .10f))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Rounded.Security, null, tint = Mint)
+                    Text("◇", color = Mint, fontSize = 27.sp)
                     Column {
-                        Text("Installation sécurisée",
-                            fontWeight = FontWeight.SemiBold)
+                        Text("Installation sécurisée", fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(5.dp))
                         Text(
                             "Pas de root ni de publicité. La confirmation d'Android reste obligatoire. Utilise des fichiers de confiance.",
@@ -174,7 +176,7 @@ fun BundleTapScreen(
                 }
                 OutlinedButton(onClick = onEnableSource,
                     modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.Settings, null, tint = Mint)
+                    Text("⚙", color = Mint, fontSize = 20.sp)
                     Spacer(Modifier.width(10.dp))
                     Text("Autorisation d'installation")
                 }
