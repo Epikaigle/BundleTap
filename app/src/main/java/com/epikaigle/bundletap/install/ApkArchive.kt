@@ -65,9 +65,6 @@ class ApkArchive(private val context: Context) {
                     if (discovered.isEmpty()) {
                         throw IllegalArgumentException("Archive sans APK installable.")
                     }
-                    val locales = Build.VERSION_CODES::class.java // no device-specific constants needed
-                    @Suppress("UNUSED_VARIABLE")
-                    val unused = locales
                     val deviceLanguages = context.resources.configuration.locales
                     val tags = (0 until deviceLanguages.size()).map {
                         deviceLanguages[it].toLanguageTag()
@@ -78,7 +75,10 @@ class ApkArchive(private val context: Context) {
                         densityDpi = context.resources.displayMetrics.densityDpi,
                         locales = tags
                     ).toSet()
-                    discovered.filter { it.first in chosen }.map { it.second }
+                    val ordered = chosen.map { key ->
+                        discovered.first { it.first == key }.second
+                    }
+                    ordered
                 }
             }
             require(apks.isNotEmpty()) { "Aucun APK compatible pour le Pixel." }

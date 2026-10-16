@@ -112,13 +112,15 @@ class MainActivity : ComponentActivity() {
                         prepared.dispose()
                     }
                 }
-                InstallUpdates.publish(
-                    this@MainActivity, InstallUpdate(
-                        InstallPhase.AWAITING_CONFIRMATION,
-                        "Installation envoyée",
-                        "Android prépare la confirmation de sécurité."
+                if (InstallUpdates.current.value.phase == InstallPhase.PREPARING) {
+                    InstallUpdates.publish(
+                        this@MainActivity, InstallUpdate(
+                            InstallPhase.AWAITING_CONFIRMATION,
+                            "Installation envoyée",
+                            "Android prépare la confirmation de sécurité."
+                        )
                     )
-                )
+                }
             } catch (e: Exception) {
                 InstallUpdates.publish(
                     this@MainActivity, InstallUpdate(

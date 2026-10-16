@@ -23,7 +23,12 @@ jobs:
           gradle-version: '9.5.0'
       - uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0'
+      - name: Compatibility SDK path
+        run: |
+          if [ ! -e "$ANDROID_HOME/platforms/android-37" ] && [ -d "$ANDROID_HOME/platforms/android-37.0" ]; then
+            ln -s "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          fi
       - name: Build and test
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Upload APK

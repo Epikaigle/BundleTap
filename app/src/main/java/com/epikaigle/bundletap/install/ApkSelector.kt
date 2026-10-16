@@ -61,7 +61,10 @@ object ApkSelector {
         }
 
         val normalisedAbis = supportedAbis.map { it.lowercase().replace('-', '_') }
-        val preferredAbi = normalisedAbis.firstOrNull().orEmpty()
+        val availableAbis = candidates.flatMap { path ->
+            abiTokens.keys.filter { hasToken(path.substringAfterLast('/').lowercase(), it) }
+        }.toSet()
+        val preferredAbi = normalisedAbis.firstOrNull { it in availableAbis }.orEmpty()
         val languages = locales.map { it.substringBefore('-').lowercase() }.toSet() + "en"
         val densityEntries = candidates.filter { name -> densityFor(name) != null }
         val closestDensity = densityEntries.minByOrNull { name ->
@@ -84,7 +87,7 @@ object ApkSelector {
             true // feature-master and otherwise unqualified splits
         }
         if (base !in selected) throw IllegalStateException("APK principal manquant.")
-        return selected
+        return listOf(base) + selected.filterNot { it == base }
     }
 
     private fun hasToken(name: String, token: String): Boolean {
