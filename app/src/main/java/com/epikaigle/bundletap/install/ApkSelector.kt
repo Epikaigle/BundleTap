@@ -76,6 +76,11 @@ object ApkSelector {
         val wantedLanguages = locales.map { it.substringBefore('-').lowercase(Locale.ROOT) }
             .toSet() + "en"
 
+        val masterPrefixes = candidates.mapNotNull { candidate ->
+            val s = stem(candidate)
+            val suffix = Regex("[._-]master$").find(s)
+            suffix?.let { s.substring(0, it.range.first) }
+        }.toSet()
         val others = candidates.filterNot { it == base }
         val abiCandidates = others.mapNotNull { path ->
             val matched = abiTokens.firstOrNull { hasToken(stem(path), it) }
@@ -108,7 +113,7 @@ object ApkSelector {
                 path in abiPaths -> path in abiSelected
                 path in densityPaths -> path in densitySelected
                 else -> {
-                    val language = languageFor(path)
+                    val language = languageFor(path, masterPrefixes)
                     language == null || language in wantedLanguages
                 }
             }
@@ -146,14 +151,14 @@ object ApkSelector {
         return s.replace(Regex("(?i)[._-]$escaped$"), "")
     }
 
-    private fun languageFor(path: String): String? {
+    private fun languageFor(path: String, masterPrefixes: Set<String>): String? {
         val s = stem(path)
         // Restrict to configuration suffixes, not dynamic feature module names.
         val match = Regex("(?:^|[._-])([a-z]{2,3})$").find(s) ?: return null
         val lang = match.groupValues[1]
         if (lang !in languages) return null
         val prefix = s.substring(0, match.range.first)
-        return if (prefix.endsWith("config") || prefix == "base" || prefix.startsWith("base-") ||
+        return if (prefix.endsWith("config") || prefix == "base" || prefix in masterPrefixes ||
             prefix.startsWith("base_") || prefix.startsWith("base.")) lang else null
     }
 }

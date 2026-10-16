@@ -9,7 +9,7 @@ class AdditionalApkSelectorTest {
             listOf(
                 "splits/base-master.apk", "splits/base-en.apk",
                 "splits/base-fr.apk", "splits/base-ja.apk",
-                "splits/feature-master.apk", "splits/feature-fr.apk"
+                "splits/feature-master.apk", "splits/feature-fr.apk", "splits/feature-ja.apk"
             ), listOf("arm64-v8a"), 480, listOf("fr-FR")
         )
         assertEquals(
