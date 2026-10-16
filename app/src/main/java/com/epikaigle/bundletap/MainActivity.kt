@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
     private var isBusy by mutableStateOf(false)
     private var update by mutableStateOf(InstallUpdates.current.value)
     private var deferredUri: Uri? = null
+    private var sourceAllowed by mutableStateOf(false)
 
     private val picker = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sourceAllowed = packageManager.canRequestPackageInstalls()
         InstallUpdates.restore(this)
 
         setContent {
@@ -43,6 +45,8 @@ class MainActivity : ComponentActivity() {
                 update = update,
                 fileName = displayFile,
                 busy = isBusy,
+                sourceAllowed = sourceAllowed,
+                canConfirm = InstallUpdates.pendingConfirmation != null,
                 onSelectFile = { picker.launch(arrayOf("*/*")) },
                 onEnableSource = { openUnknownSourcesSettings() },
                 onConfirm = { launchPendingConfirmation() }
@@ -62,6 +66,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        sourceAllowed = packageManager.canRequestPackageInstalls()
         val waiting = deferredUri
         if (waiting != null && packageManager.canRequestPackageInstalls()) {
             deferredUri = null

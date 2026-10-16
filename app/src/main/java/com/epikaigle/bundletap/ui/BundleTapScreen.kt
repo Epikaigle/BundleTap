@@ -29,6 +29,8 @@ fun BundleTapScreen(
     update: InstallUpdate,
     fileName: String?,
     busy: Boolean,
+    sourceAllowed: Boolean,
+    canConfirm: Boolean,
     onSelectFile: () -> Unit,
     onEnableSource: () -> Unit,
     onConfirm: () -> Unit
@@ -130,7 +132,15 @@ fun BundleTapScreen(
                             Text(fileName, fontSize = 14.sp,
                                 modifier = Modifier.padding(top = 4.dp))
                         }
-                        if (update.phase == InstallPhase.AWAITING_CONFIRMATION) {
+                        if (update.phase == InstallPhase.AWAITING_CONFIRMATION &&
+                            !sourceAllowed) {
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedButton(onClick = onEnableSource,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("Autoriser l'installation")
+                            }
+                        } else if (update.phase == InstallPhase.AWAITING_CONFIRMATION &&
+                            canConfirm) {
                             Spacer(Modifier.height(12.dp))
                             OutlinedButton(onClick = onConfirm,
                                 modifier = Modifier.fillMaxWidth()) {
