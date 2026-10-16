@@ -35,6 +35,7 @@ class ApkArchive(private val context: Context) {
         private const val MAX_APK_BYTES = 800L * 1024 * 1024
         private const val MAX_EXTRACT_BYTES = 1500L * 1024 * 1024
         private const val MAX_METADATA_BYTES = 256L * 1024
+        private const val MAX_OTHER_BYTES = 64L * 1024 * 1024
     }
 
     fun displayName(uri: Uri): String {
@@ -110,7 +111,7 @@ class ApkArchive(private val context: Context) {
             require(!entry.name.startsWith("/") && !entry.name.contains("\u0000")) {
                 "Nom de fichier suspect dans l'archive."
             }
-            val limit = if (lower.endsWith(".apk")) MAX_APK_BYTES else MAX_METADATA_BYTES
+            val limit = if (lower.endsWith(".apk")) MAX_APK_BYTES else MAX_OTHER_BYTES
             require(entry.size <= limit || entry.size < 0) {
                 "L'archive contient un fichier trop volumineux."
             }
