@@ -17,7 +17,9 @@ data class InstallUpdate(
     val packageName: String? = null,
     val splitCount: Int? = null,
     val appLabel: String? = null,
-    val appVersion: String? = null
+    val appVersion: String? = null,
+    val fileSizeBytes: Long? = null,
+    val appIcon: android.graphics.Bitmap? = null
 )
 
 /**
@@ -43,7 +45,9 @@ object InstallUpdates {
                 packageName = next.packageName ?: current.value.packageName,
                 splitCount = next.splitCount ?: current.value.splitCount,
                 appLabel = next.appLabel ?: current.value.appLabel,
-                appVersion = next.appVersion ?: current.value.appVersion
+                appVersion = next.appVersion ?: current.value.appVersion,
+                fileSizeBytes = next.fileSizeBytes ?: current.value.fileSizeBytes,
+                appIcon = next.appIcon ?: current.value.appIcon
             ) else next
         current.value = update
         val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -61,6 +65,11 @@ object InstallUpdates {
         } else {
             editor.remove("split_count")
         }
+        if (update.fileSizeBytes != null) {
+            editor.putLong("file_size_bytes", update.fileSizeBytes)
+        } else {
+            editor.remove("file_size_bytes")
+        }
         editor.apply()
     }
 
@@ -75,6 +84,7 @@ object InstallUpdates {
         val label = prefs.getString("app_label", null)
         val ver = prefs.getString("app_version", null)
         val splits = if (prefs.contains("split_count")) prefs.getInt("split_count", 0) else null
+        val sizeBytes = if (prefs.contains("file_size_bytes")) prefs.getLong("file_size_bytes", 0L) else null
         val interrupted = phase == InstallPhase.PREPARING ||
             (phase == InstallPhase.AWAITING_CONFIRMATION && pendingConfirmation == null) ||
             phase == InstallPhase.NEEDS_PERMISSION
@@ -87,7 +97,8 @@ object InstallUpdates {
                 packageName = pkgName,
                 splitCount = splits,
                 appLabel = label,
-                appVersion = ver
+                appVersion = ver,
+                fileSizeBytes = sizeBytes
             )
         } else {
             current.value = InstallUpdate(
@@ -99,7 +110,8 @@ object InstallUpdates {
                 packageName = pkgName,
                 splitCount = splits,
                 appLabel = label,
-                appVersion = ver
+                appVersion = ver,
+                fileSizeBytes = sizeBytes
             )
         }
         expireUnansweredSession(context)
@@ -121,7 +133,7 @@ object InstallUpdates {
 
     fun activateSession(context: Context, id: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putInt(ACTIVE_SESSION, id).commit()
+            .edit().putInt(ACTIVE_SESSION, id).apply()
     }
 
     fun isCurrentSession(context: Context, id: Int): Boolean =

@@ -22,7 +22,8 @@ data class PreparedApks(
     val packageName: String? = null,
     val appLabel: String? = null,
     val appVersion: String? = null,
-    val totalBytes: Long = 0L
+    val totalBytes: Long = 0L,
+    val appIcon: android.graphics.Bitmap? = null
 ) {
     fun dispose() { workspace.deleteRecursively() }
 }
@@ -58,6 +59,19 @@ class ApkArchive(private val context: Context) {
         }
         val fallback = uri.lastPathSegment ?: uri.path ?: "Fichier Android"
         return FileFormats.cleanFileName(fallback)
+    }
+
+    fun queryFileSize(uri: Uri): Long {
+        return runCatching {
+            context.contentResolver.query(
+                uri, arrayOf(OpenableColumns.SIZE), null, null, null
+            )?.use {
+                if (it.moveToFirst()) {
+                    val index = it.getColumnIndex(OpenableColumns.SIZE)
+                    if (index >= 0) it.getLong(index) else 0L
+                } else 0L
+            } ?: 0L
+        }.getOrDefault(0L)
     }
 
     fun prepare(uri: Uri): PreparedApks {
@@ -132,6 +146,9 @@ class ApkArchive(private val context: Context) {
                 info.applicationInfo?.loadLabel(context.packageManager)?.toString()
             }.getOrNull()?.takeIf { it.isNotBlank() }
             val version = info.versionName?.takeIf { it.isNotBlank() }
+            val icon = runCatching {
+                info.applicationInfo?.loadIcon(context.packageManager)?.let(::drawableToBitmap)
+            }.getOrNull()
             val totalBytes = apks.sumOf { it.length() }
             return PreparedApks(
                 name = name,
@@ -140,12 +157,27 @@ class ApkArchive(private val context: Context) {
                 packageName = info.packageName,
                 appLabel = label,
                 appVersion = version,
-                totalBytes = totalBytes
+                totalBytes = totalBytes,
+                appIcon = icon
             )
         } catch (error: Exception) {
             workspace.deleteRecursively()
             throw error
         }
+    }
+
+    private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): android.graphics.Bitmap {
+        val rawWidth = drawable.intrinsicWidth.takeIf { it > 0 } ?: 128
+        val rawHeight = drawable.intrinsicHeight.takeIf { it > 0 } ?: 128
+        val maxDim = 128
+        val scale = minOf(1.0f, maxDim.toFloat() / maxOf(rawWidth, rawHeight))
+        val width = (rawWidth * scale).toInt().coerceAtLeast(1)
+        val height = (rawHeight * scale).toInt().coerceAtLeast(1)
+        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun extractSelected(zip: ZipFile, extension: String, dir: File): List<File> {

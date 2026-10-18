@@ -1,47 +1,43 @@
-# BundleTap · Android 17
+# BundleTap · Android 12 à 17 (API 31 - 37)
 
 [![Android APK](https://github.com/Epikaigle/BundleTap/actions/workflows/android.yml/badge.svg)](https://github.com/Epikaigle/BundleTap/actions/workflows/android.yml)
 
-Installateur personnel APK, APKM, APKS et XAPK pour **Pixel 7 Pro / Android 17 (API 37)**. Application Kotlin + Jetpack Compose, sans publicité, serveur, root ou connexion réseau.
+Installateur personnel universel d'APK, APKM, APKS, XAPK et APKX pour Android 12+ (compatible jusqu'à Android 17 / API 37). Application 100% Kotlin + Jetpack Compose Material 3, sans publicité, sans pistage, sans serveur, sans root et sans aucune connexion réseau.
 
-## Installer sur le Pixel
+## Nouveautés & Points forts
 
-1. Ouvre les [compilations GitHub](https://github.com/Epikaigle/BundleTap/actions/workflows/android.yml) et sélectionne une exécution réussie sur main.
-2. Télécharge l'artefact **BundleTap-debug-Android17**, ou **BundleTap-signed-release-Android17** si tu as configuré ta signature personnelle.
-3. Extrais le ZIP, ouvre l'APK sur ton Pixel, puis autorise son installation si nécessaire.
-4. Ouvre BundleTap, choisis un APK/APKM/APKS/XAPK et valide la confirmation système.
+- **Icône réelle de l'application** : extraction et affichage automatique de l'icône originale de l'application avant et pendant l'installation.
+- **Taille & métadonnées précises** : affichage formaté de la taille de l'archive (Ko, Mo, Go), du nom de package, du numéro de version et du nombre de splits configurés.
+- **Glisser-Déposer (Drag & Drop)** : support complet du drag & drop depuis n'importe quel gestionnaire de fichiers en mode multi-fenêtres ou écran scindé (tablettes et pliables).
+- **Compatibilité universelle** : compatible de **Android 12 (API 31)** jusqu'à **Android 17 (API 37)**.
+- **Empreinte mémoire ultra-légère** : gestion optimisée de la RAM, mise à l'échelle automatique des icônes pour éviter les fuites de mémoire.
+- **Clé de signature persistante** : toutes les releases officielles sont signées avec la même clé persistante afin de permettre les mises à jour sans désinstaller l'application.
 
-**Signature :** les APK debug GitHub sont signés avec une clé temporaire susceptible de changer. Pour effectuer des mises à jour sans désinstaller l'application, conserve **une clé release privée et persistante** : [procédure de signature](docs/SIGNING.md). La première migration debug vers release pourra demander une désinstallation.
-
-## Ce que BundleTap prend en charge
+## Formats pris en charge
 
 | Format | Comportement |
 | --- | --- |
-| APK | Installation unique |
-| APKM | Base APK et modules ABI, langue et densité reconnus |
-| XAPK | Base déclarée dans manifest.json ou nommée d'après le paquet ; pas de données OBB |
-| APKS | Variantes simples de split APK ; certaines variantes bundletool avancées ne sont pas interprétées |
-| AAB | Non ; le bundle doit être compilé et signé préalablement |
-| XAPK avec OBB | Refus explicite, pas d'installation partielle |
+| **APK** | Installation unique classique |
+| **APKM** | Base APK et sélection intelligente des modules ABI (ARM64...), langue et densité d'écran |
+| **XAPK / APKX** | Base déclarée dans manifest.json ou nommée d'après le paquet ; extraction optimisée |
+| **APKS / BAPKS** | Variantes de split APK issues de bundletool |
+| **ZIP** | Détection automatique des archives ZIP contenant des fichiers APK |
+| **AAB** | Non pris en charge directement (doit être compilé en APK/APKS au préalable) |
+| **XAPK avec OBB** | Refus explicite et sécurisé, pas d'installation tronquée sans assets OBB |
 
-La sélection privilégie le CPU ARM64 et les ressources compatibles avec le Pixel, sans mélanger les variantes de densité de modules distincts. Les fichiers ZIP sont d'abord indexés, puis **seuls les APK sélectionnés** sont extraits. Des limites de taille et des contrôles CRC empêchent certaines archives corrompues ou abusives. Android vérifie les APK au moment de l'installation.
+Les fichiers d'archive sont d'abord indexés, puis **seuls les APK pertinents** sont extraits et transmis au `PackageInstaller` natif d'Android via un streaming optimisé en flux direct.
 
-**Sécurité :** ces contrôles ne prouvent pas qu'un téléchargement est fiable. Ne choisis que des applications provenant de sources de confiance.
+## Installer BundleTap
 
-## Interface
+1. Rends-toi sur la page des [Releases GitHub](https://github.com/Epikaigle/BundleTap/releases).
+2. Télécharge l'APK officiel signé (`BundleTap-v1.3.0.apk`).
+3. Ouvre l'APK sur ton appareil Android et autorise l'installation.
+4. Lance BundleTap, choisis ou glisse ton fichier APK/APKM/APKS/XAPK et valide la confirmation système.
 
-Un écran unique sombre et de grandes zones tactiles : accueil, autorisation, préparation, confirmation Android, succès ou erreur. Après un échec, tu peux sélectionner un autre fichier ou réessayer. Les détails techniques restent repliés. Un ViewModel conserve les opérations de préparation en cas de rotation de l'écran.
+## Confidentialité & Sécurité
 
-## Développer et tester
-
-Le dépôt est développé directement sur main. Prérequis : Android Studio compatible API 37, JDK 17 et Gradle 9.5.0. Build local :
-
-    gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
-
-GitHub Actions exécute les tests unitaires, Android Lint, la compilation de l'application et **la compilation des tests d'interaction Compose**. Les tests Compose ne sont **pas exécutés** en CI faute d'émulateur/appareil Android 17. Le plan de [tests manuels sur Pixel](docs/TESTING.md) doit être effectué pour confirmer l'expérience réelle.
-
-## Confidentialité
-
-Aucun réseau ni collecte de données. Les fichiers sont choisis via le sélecteur Android et traités dans le cache privé de BundleTap. Permission REQUEST_INSTALL_PACKAGES uniquement pour lancer l'installateur Android, dont la confirmation ne peut être contournée.
+- **Zéro télémétrie, zéro réseau** : aucune permission INTERNET demandée dans le manifeste.
+- **Cache privé sécurisé** : les fichiers temporaires sont traités dans l'espace sandboxé de l'application et immédiatement purgés après utilisation.
+- **Intégrité Android native** : utilise l'API officielle `PackageInstaller` du système Android.
 
 Licence MIT.

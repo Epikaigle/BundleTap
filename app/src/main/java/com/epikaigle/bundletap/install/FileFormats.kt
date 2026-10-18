@@ -53,5 +53,18 @@ object FileFormats {
 
     fun formatOf(name: String): String =
         extractExtension(name).uppercase(Locale.ROOT).ifBlank { "APK" }
+
+    fun formatFileSize(bytes: Long): String {
+        if (bytes <= 0L) return ""
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+        return when {
+            gb >= 1.0 -> String.format(Locale.FRENCH, "%.1f Go", gb)
+            mb >= 1.0 -> String.format(Locale.FRENCH, "%.1f Mo", mb)
+            kb >= 1.0 -> String.format(Locale.FRENCH, "%.0f Ko", kb)
+            else -> "$bytes octets"
+        }
+    }
 }
 

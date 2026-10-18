@@ -50,7 +50,9 @@ class PackageInstallEngine(private val context: Context) {
                     packageName = prepared.packageName,
                     splitCount = prepared.apks.size,
                     appLabel = prepared.appLabel,
-                    appVersion = prepared.appVersion
+                    appVersion = prepared.appVersion,
+                    fileSizeBytes = prepared.totalBytes,
+                    appIcon = prepared.appIcon
                 ))
                 session.commit(callback.intentSender)
                 committed = true

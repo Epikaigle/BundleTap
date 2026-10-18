@@ -61,13 +61,16 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectFile(uri: Uri) {
         val context = getApplication<Application>()
         selectedUri = uri
-        val filename = runCatching { ApkArchive(context).displayName(uri) }
+        val archive = ApkArchive(context)
+        val filename = runCatching { archive.displayName(uri) }
             .getOrDefault("Fichier sélectionné").take(160)
+        val fileSize = runCatching { archive.queryFileSize(uri) }.getOrDefault(0L)
         InstallUpdates.publish(context, InstallUpdate(
             InstallPhase.FILE_SELECTED,
             "Fichier prêt",
             "Clique sur « Installer » pour lancer l'installation sur ton appareil.",
-            fileName = filename
+            fileName = filename,
+            fileSizeBytes = if (fileSize > 0L) fileSize else null
         ))
     }
 

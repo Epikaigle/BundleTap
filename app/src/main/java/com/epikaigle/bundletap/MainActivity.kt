@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
+import android.view.DragEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         super.onCreate(savedInstanceState)
+        setupDragAndDrop()
         sourceAllowed = packageManager.canRequestPackageInstalls()
         setContent {
             val update by InstallUpdates.current.collectAsState()
@@ -63,6 +65,29 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleIncoming(intent)
     }
 
+    private fun setupDragAndDrop() {
+        window.decorView.setOnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED -> true
+                DragEvent.ACTION_DRAG_ENTERED,
+                DragEvent.ACTION_DRAG_LOCATION,
+                DragEvent.ACTION_DRAG_EXITED -> true
+                DragEvent.ACTION_DROP -> {
+                    requestDragAndDropPermissions(event)
+                    val dropUri = event.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+                    if (dropUri != null) {
+                        openFile(dropUri)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                DragEvent.ACTION_DRAG_ENDED -> true
+                else -> false
+            }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -79,9 +104,15 @@ class MainActivity : ComponentActivity() {
     private fun handleIncoming(incoming: Intent?) {
         val uri = when (incoming?.action) {
             Intent.ACTION_VIEW -> incoming.data ?: incoming.clipData?.getItemAt(0)?.uri
-            Intent.ACTION_SEND -> incoming.getParcelableExtra(
-                Intent.EXTRA_STREAM, Uri::class.java
-            ) ?: incoming.clipData?.getItemAt(0)?.uri
+            Intent.ACTION_SEND -> {
+                val streamUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    incoming.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    incoming.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+                }
+                streamUri ?: incoming.clipData?.getItemAt(0)?.uri
+            }
             else -> incoming?.data ?: incoming?.clipData?.getItemAt(0)?.uri
         }
         if (uri != null) openFile(uri)

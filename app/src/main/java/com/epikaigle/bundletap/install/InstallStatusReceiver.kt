@@ -25,9 +25,12 @@ class InstallStatusReceiver : BroadcastReceiver() {
 
         when (code) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                val confirmation = intent.getParcelableExtra(
-                    Intent.EXTRA_INTENT, Intent::class.java
-                )
+                val confirmation = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
+                }
                 if (confirmation == null) {
                     fail(context, "Confirmation indisponible",
                         "Android n'a pas fourni la fenêtre d'installation.", diagnostic)

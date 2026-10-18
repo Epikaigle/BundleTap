@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +31,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -545,7 +547,7 @@ private fun WelcomeCard(
 }
 
 @Composable
-private fun InstallingAnimation(phase: InstallPhase) {
+private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.Bitmap? = null) {
     val infiniteTransition = rememberInfiniteTransition(label = "InstallingInfinite")
 
     val pulseScale by infiniteTransition.animateFloat(
@@ -625,14 +627,25 @@ private fun InstallingAnimation(phase: InstallPhase) {
                     .border(BorderStroke(1.5.dp, Accent.copy(alpha = 0.6f)), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_bundle),
-                    contentDescription = null,
-                    tint = Accent,
-                    modifier = Modifier
-                        .size(30.dp)
-                        .scale(pulseScale)
-                )
+                if (appIcon != null) {
+                    Image(
+                        bitmap = appIcon.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .scale(pulseScale)
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_bundle),
+                        contentDescription = null,
+                        tint = Accent,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .scale(pulseScale)
+                    )
+                }
             }
         }
 
@@ -728,28 +741,39 @@ private fun InstallationCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(tint.copy(alpha = 0.12f))
-                        .border(BorderStroke(1.dp, tint.copy(alpha = 0.35f)), RoundedCornerShape(18.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(
-                            when {
-                                isCancelled -> R.drawable.ic_alert
-                                failed -> R.drawable.ic_alert
-                                complete -> R.drawable.ic_done
-                                update.phase == InstallPhase.NEEDS_PERMISSION -> R.drawable.ic_shield
-                                else -> R.drawable.ic_bundle
-                            }
-                        ),
+                if (update.appIcon != null && !failed && !isCancelled) {
+                    Image(
+                        bitmap = update.appIcon.asImageBitmap(),
                         contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .border(BorderStroke(1.dp, tint.copy(alpha = 0.35f)), RoundedCornerShape(18.dp))
                     )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(tint.copy(alpha = 0.12f))
+                            .border(BorderStroke(1.dp, tint.copy(alpha = 0.35f)), RoundedCornerShape(18.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                when {
+                                    isCancelled -> R.drawable.ic_alert
+                                    failed -> R.drawable.ic_alert
+                                    complete -> R.drawable.ic_done
+                                    update.phase == InstallPhase.NEEDS_PERMISSION -> R.drawable.ic_shield
+                                    else -> R.drawable.ic_bundle
+                                }
+                            ),
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
                 }
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -861,9 +885,14 @@ private fun InstallationCard(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            if (update.splitCount != null && update.splitCount > 1) {
+                            val sizeText = update.fileSizeBytes?.let { FileFormats.formatFileSize(it) }
+                            val splitText = if (update.splitCount != null && update.splitCount > 1) {
+                                "Base + ${update.splitCount - 1} splits configurés"
+                            } else null
+                            val metaText = listOfNotNull(sizeText, splitText).joinToString(" • ")
+                            if (metaText.isNotEmpty()) {
                                 Text(
-                                    "Base + ${update.splitCount - 1} splits configurés",
+                                    metaText,
                                     color = Accent,
                                     fontSize = 11.sp,
                                     modifier = Modifier.padding(top = 2.dp)
@@ -876,7 +905,7 @@ private fun InstallationCard(
 
             if (working) {
                 Spacer(Modifier.height(18.dp))
-                InstallingAnimation(phase = update.phase)
+                InstallingAnimation(phase = update.phase, appIcon = update.appIcon)
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = onCancel,

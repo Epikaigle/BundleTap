@@ -77,4 +77,14 @@ class FileFormatsTest {
         assertEquals("ZIP", FileFormats.formatOf("test.zip"))
         assertEquals("APK", FileFormats.formatOf("no_extension"))
     }
+
+    @Test
+    fun formatFileSizeUnits() {
+        assertEquals("", FileFormats.formatFileSize(0L))
+        assertEquals("", FileFormats.formatFileSize(-100L))
+        assertEquals("500 octets", FileFormats.formatFileSize(500L))
+        assertEquals("2 Ko", FileFormats.formatFileSize(2048L))
+        assertEquals("45,0 Mo", FileFormats.formatFileSize(45L * 1024 * 1024))
+        assertEquals("1,5 Go", FileFormats.formatFileSize((1.5 * 1024 * 1024 * 1024).toLong()))
+    }
 }
