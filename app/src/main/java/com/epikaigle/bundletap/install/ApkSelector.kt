@@ -42,16 +42,21 @@ object ApkSelector {
             it.lowercase(Locale.ROOT).replace('-', '_')
         }
 
-        val hasSplits = paths.any { it.startsWith("splits/", ignoreCase = true) }
+        val hasSplits = paths.any {
+            val l = it.lowercase(Locale.ROOT)
+            l.startsWith("splits/") || l.contains("/splits/")
+        }
         val candidates = paths.filter { path ->
             val lower = path.lowercase(Locale.ROOT)
-            if (hasSplits) lower.startsWith("splits/")
-            else !lower.startsWith("standalones/") &&
-                !lower.startsWith("instant/") && !lower.startsWith("system/")
+            if (hasSplits) lower.startsWith("splits/") || lower.contains("/splits/")
+            else !lower.startsWith("standalones/") && !lower.contains("/standalones/") &&
+                !lower.startsWith("instant/") && !lower.contains("/instant/") &&
+                !lower.startsWith("system/") && !lower.contains("/system/")
         }
         if (candidates.isEmpty()) {
             val standalones = paths.filter {
-                it.startsWith("standalones/", ignoreCase = true)
+                it.startsWith("standalones/", ignoreCase = true) ||
+                    it.contains("/standalones/", ignoreCase = true)
             }
             if (standalones.size == 1) return standalones
             if (standalones.isNotEmpty()) {
@@ -91,7 +96,7 @@ object ApkSelector {
         if (hinted == null && universal.size == 1) return universal
         val bases = candidates.filter {
             it.substringAfterLast('/').lowercase(Locale.ROOT) in
-                setOf("base.apk", "base-master.apk", "base_master.apk")
+                setOf("base.apk", "base-master.apk", "base_master.apk", "main.apk", "master.apk")
         }
         val inferredBase = if (hinted == null && bases.isEmpty()) {
             val nonSplits = candidates.filter { path ->
@@ -101,7 +106,14 @@ object ApkSelector {
                 val isLang = languageFor(path, emptySet()) != null
                 !isAbi && !isDensity && !isLang
             }
-            if (nonSplits.size == 1) nonSplits.single() else null
+            if (nonSplits.size == 1) {
+                nonSplits.single()
+            } else if (nonSplits.isNotEmpty()) {
+                nonSplits.firstOrNull {
+                    val s = stem(it)
+                    s.contains("base") || s.contains("master") || s.contains("main")
+                }
+            } else null
         } else null
 
         val base = hinted ?: bases.singleOrNull() ?: inferredBase

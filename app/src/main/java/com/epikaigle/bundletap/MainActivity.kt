@@ -55,7 +55,8 @@ class MainActivity : ComponentActivity() {
                 onRetry = { installer.retry()?.let(::openFile) },
                 onReset = installer::clear,
                 onCancel = installer::cancel,
-                onOpenApp = ::openInstalledApp
+                onOpenApp = ::openInstalledApp,
+                onInstall = ::launchInstall
             )
         }
         // Do not process ACTION_VIEW twice after rotating the phone.
@@ -77,11 +78,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncoming(incoming: Intent?) {
         val uri = when (incoming?.action) {
-            Intent.ACTION_VIEW -> incoming.data
+            Intent.ACTION_VIEW -> incoming.data ?: incoming.clipData?.getItemAt(0)?.uri
             Intent.ACTION_SEND -> incoming.getParcelableExtra(
                 Intent.EXTRA_STREAM, Uri::class.java
-            )
-            else -> null
+            ) ?: incoming.clipData?.getItemAt(0)?.uri
+            else -> incoming?.data ?: incoming?.clipData?.getItemAt(0)?.uri
         }
         if (uri != null) openFile(uri)
     }
@@ -104,14 +105,27 @@ class MainActivity : ComponentActivity() {
         val fileName = runCatching { ApkArchive(this).displayName(uri) }
             .getOrNull() ?: "Fichier inconnu"
         if (!FileFormats.isInstallableName(fileName)) {
-            InstallUpdates.publish(this, InstallUpdate(
-                InstallPhase.ERROR,
-                "Format non pris en charge",
-                "Choisis un fichier APK, APKM, APKS ou XAPK.",
-                fileName = fileName
-            ))
-            return
+            val mime = runCatching { contentResolver.getType(uri) }.getOrNull()
+            val isRecognizedMime = mime == "application/vnd.android.package-archive" ||
+                mime in setOf(
+                    "application/zip", "application/x-zip", "application/x-zip-compressed",
+                    "application/x-apks", "application/x-apkm", "application/x-xapk", "application/x-apkx"
+                )
+            if (!isRecognizedMime) {
+                InstallUpdates.publish(this, InstallUpdate(
+                    InstallPhase.ERROR,
+                    "Format non pris en charge",
+                    "Choisis un fichier APK, APKM, APKS, XAPK, APKX ou ZIP.",
+                    fileName = fileName
+                ))
+                return
+            }
         }
+        installer.selectFile(uri)
+    }
+
+    private fun launchInstall() {
+        val uri = installer.selectedUri ?: return
         if (installer.needsPermission(uri)) {
             openUnknownSourcesSettings()
         } else {

@@ -5,7 +5,7 @@ import android.content.Intent
 import kotlinx.coroutines.flow.MutableStateFlow
 
 enum class InstallPhase {
-    READY, NEEDS_PERMISSION, PREPARING, INSTALLING, AWAITING_CONFIRMATION, SUCCESS, ERROR
+    READY, FILE_SELECTED, NEEDS_PERMISSION, PREPARING, INSTALLING, AWAITING_CONFIRMATION, SUCCESS, ERROR
 }
 
 data class InstallUpdate(

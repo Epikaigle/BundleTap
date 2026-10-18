@@ -58,7 +58,21 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun start(uri: Uri) {
+    fun selectFile(uri: Uri) {
+        val context = getApplication<Application>()
+        selectedUri = uri
+        val filename = runCatching { ApkArchive(context).displayName(uri) }
+            .getOrDefault("Fichier sélectionné").take(160)
+        InstallUpdates.publish(context, InstallUpdate(
+            InstallPhase.FILE_SELECTED,
+            "Fichier prêt",
+            "Clique sur « Installer » pour lancer l'installation sur ton appareil.",
+            fileName = filename
+        ))
+    }
+
+    fun start(targetUri: Uri? = null) {
+        val uri = targetUri ?: selectedUri ?: return
         val context = getApplication<Application>()
         val phase = InstallUpdates.current.value.phase
         if (busy && phase == InstallPhase.INSTALLING) return

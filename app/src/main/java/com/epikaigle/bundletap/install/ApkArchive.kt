@@ -57,9 +57,20 @@ class ApkArchive(private val context: Context) {
 
     fun prepare(uri: Uri): PreparedApks {
         val name = displayName(uri)
-        val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        require(ext in setOf("apk", "apks", "apkm", "xapk")) {
-            "Format non pris en charge : APK, APKM, APKS ou XAPK uniquement."
+        var ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        if (ext !in FileFormats.supported && ext != "zip") {
+            val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+            if (mime == "application/vnd.android.package-archive" || mime == "application/apk") {
+                ext = "apk"
+            } else if (mime in setOf(
+                    "application/zip", "application/x-zip", "application/x-zip-compressed",
+                    "application/x-apks", "application/x-apkm", "application/x-xapk", "application/x-apkx"
+                )) {
+                ext = "zip"
+            }
+        }
+        require(ext in setOf("apk", "apks", "apkm", "xapk", "apkx", "bapks", "zip")) {
+            "Format non pris en charge : APK, APKS, APKM, XAPK, APKX ou ZIP."
         }
         cleanAbandonedCache()
         val workspace = File(context.cacheDir, "installation-" + UUID.randomUUID())
@@ -124,8 +135,9 @@ class ApkArchive(private val context: Context) {
             val lower = name.lowercase(Locale.ROOT)
             require(names.add(lower)) { "Noms de fichiers dupliqués dans l'archive." }
             if (entry.isDirectory) continue
-            require(!lower.endsWith(".obb")) {
-                "Cette archive comporte des données OBB non prises en charge."
+            if (lower.endsWith(".obb")) {
+                // Ignore OBB files gracefully; the APK itself can still be installed
+                continue
             }
             require(!entry.name.startsWith("/") && !entry.name.contains("\u0000")) {
                 "Nom de fichier suspect dans l'archive."
@@ -144,17 +156,16 @@ class ApkArchive(private val context: Context) {
         }
         val apkNames = entries.keys.filter { it.endsWith(".apk", ignoreCase = true) }
         require(apkNames.isNotEmpty()) { "Archive sans fichier APK." }
-        val meta = if (extension == "xapk") {
-            val entry = entries.entries.firstOrNull {
-                it.key.equals("manifest.json", ignoreCase = true)
-            }?.value
-            entry?.let {
-                val bytes = zip.getInputStream(it).use { input ->
-                    readLimited(input, MAX_METADATA_BYTES)
-                }
-                JSONObject(bytes.toString(Charsets.UTF_8))
+        val metaEntry = entries.entries.firstOrNull {
+            val k = it.key.lowercase(Locale.ROOT)
+            k == "manifest.json" || k.endsWith("/manifest.json")
+        }?.value
+        val meta = metaEntry?.let {
+            val bytes = zip.getInputStream(it).use { input ->
+                readLimited(input, MAX_METADATA_BYTES)
             }
-        } else null
+            runCatching { JSONObject(bytes.toString(Charsets.UTF_8)) }.getOrNull()
+        }
 
         val splitMeta = meta?.optJSONArray("split_apks")
         var declaredBase: String? = null
@@ -167,11 +178,30 @@ class ApkArchive(private val context: Context) {
                 }
             }
         }
-        // Some XAPK manifests list the base only as <package_name>.apk.
-        if (declaredBase == null && extension == "xapk") {
+        if (declaredBase == null) {
             val pkg = meta?.optString("package_name")?.takeIf { it.isNotBlank() }
             if (pkg != null) {
                 val expected = "$pkg.apk"
+                declaredBase = apkNames.singleOrNull {
+                    it.substringAfterLast('/').equals(expected, ignoreCase = true)
+                }
+            }
+        }
+        if (declaredBase == null) {
+            val infoEntry = entries.entries.firstOrNull {
+                val k = it.key.lowercase(Locale.ROOT)
+                k == "info.json" || k.endsWith("/info.json")
+            }?.value
+            val infoJson = infoEntry?.let {
+                val bytes = zip.getInputStream(it).use { input ->
+                    readLimited(input, MAX_METADATA_BYTES)
+                }
+                runCatching { JSONObject(bytes.toString(Charsets.UTF_8)) }.getOrNull()
+            }
+            val infoPkg = infoJson?.optString("pname")?.takeIf { it.isNotBlank() }
+                ?: infoJson?.optString("package_name")?.takeIf { it.isNotBlank() }
+            if (infoPkg != null) {
+                val expected = "$infoPkg.apk"
                 declaredBase = apkNames.singleOrNull {
                     it.substringAfterLast('/').equals(expected, ignoreCase = true)
                 }

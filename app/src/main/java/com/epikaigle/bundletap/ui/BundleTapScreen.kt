@@ -6,11 +6,12 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,8 +26,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -77,7 +82,8 @@ fun BundleTapScreen(
     onRetry: () -> Unit,
     onReset: () -> Unit,
     onCancel: () -> Unit = onReset,
-    onOpenApp: (String) -> Unit = {}
+    onOpenApp: (String) -> Unit = {},
+    onInstall: () -> Unit = {}
 ) {
     val palette = darkColorScheme(
         primary = Accent,
@@ -150,7 +156,8 @@ fun BundleTapScreen(
                             onRetry = onRetry,
                             onReset = onReset,
                             onCancel = onCancel,
-                            onOpenApp = onOpenApp
+                            onOpenApp = onOpenApp,
+                            onInstall = onInstall
                         )
                     }
                 }
@@ -240,8 +247,7 @@ private fun BrandHeader() {
 @Composable
 private fun InstallStepTracker(phase: InstallPhase) {
     val currentStep = when (phase) {
-        InstallPhase.READY -> 0
-        InstallPhase.NEEDS_PERMISSION -> 0
+        InstallPhase.READY, InstallPhase.FILE_SELECTED, InstallPhase.NEEDS_PERMISSION -> 0
         InstallPhase.PREPARING -> 1
         InstallPhase.INSTALLING, InstallPhase.AWAITING_CONFIRMATION -> 2
         InstallPhase.SUCCESS, InstallPhase.ERROR -> 3
@@ -336,9 +342,11 @@ private fun WelcomeCard(
     var selectedFormatInfo by remember { mutableStateOf<String?>(null) }
     val formats = listOf(
         "APK" to "Application standard unique",
+        "APKS" to "Archive split APKs (bundletool / SAI)",
         "APKM" to "Bundle APKMirror avec splits (ABI, langue, densité)",
-        "APKS" to "Archive split APKs générée par bundletool",
-        "XAPK" to "Package complet APKPure avec base et splits"
+        "XAPK" to "Package complet APKPure avec base et splits",
+        "APKX" to "Format de bundle APK alternatif",
+        "ZIP" to "Archive compressée contenant un ou des APK"
     )
 
     Surface(
@@ -378,7 +386,7 @@ private fun WelcomeCard(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Sélectionne un APK ou un bundle (APKM, APKS, XAPK). BundleTap extrait et installe uniquement les composants adaptés à ton appareil.",
+                "Sélectionne un APK ou un bundle (APK, APKS, APKM, XAPK, APKX, ZIP). BundleTap extrait et installe uniquement les composants adaptés à ton appareil.",
                 color = Subtle,
                 style = MaterialTheme.typography.bodyMedium,
                 lineHeight = 22.sp
@@ -426,25 +434,45 @@ private fun WelcomeCard(
                 }
             } else {
                 Spacer(Modifier.height(14.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Elevated.copy(alpha = 0.6f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                Surface(
+                    color = Elevated.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Accent.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_done),
-                        contentDescription = null,
-                        tint = Accent,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        "Source inconnue autorisée · Prêt à installer",
-                        color = Subtle,
-                        style = MaterialTheme.typography.labelSmall
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Accent.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_done),
+                                contentDescription = null,
+                                tint = Accent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Autorisation d'installation : Accordée",
+                                color = White,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "BundleTap peut installer tous vos APK et bundles.",
+                                color = Subtle,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                 }
             }
 
@@ -517,6 +545,133 @@ private fun WelcomeCard(
 }
 
 @Composable
+private fun InstallingAnimation(phase: InstallPhase) {
+    val infiniteTransition = rememberInfiniteTransition(label = "InstallingInfinite")
+
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "PulseScale"
+    )
+
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.60f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "GlowAlpha"
+    )
+
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "Rotation"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(112.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(98.dp)
+                    .scale(pulseScale)
+                    .clip(CircleShape)
+                    .background(Accent.copy(alpha = glowAlpha * 0.35f))
+            )
+
+            Canvas(
+                modifier = Modifier
+                    .size(90.dp)
+                    .graphicsLayer(rotationZ = rotation)
+            ) {
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        listOf(
+                            Color.Transparent,
+                            Accent.copy(alpha = 0.25f),
+                            Accent
+                        )
+                    ),
+                    startAngle = 0f,
+                    sweepAngle = 280f,
+                    useCenter = false,
+                    style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(62.dp)
+                    .clip(CircleShape)
+                    .background(Elevated)
+                    .border(BorderStroke(1.5.dp, Accent.copy(alpha = 0.6f)), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_bundle),
+                    contentDescription = null,
+                    tint = Accent,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .scale(pulseScale)
+                )
+            }
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = if (phase == InstallPhase.PREPARING)
+                    "Analyse & préparation en cours…"
+                else
+                    "Installation en cours…",
+                color = White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp
+            )
+            Text(
+                text = if (phase == InstallPhase.PREPARING)
+                    "Extraction des modules compatibles avec ton appareil"
+                else
+                    "Communication avec le gestionnaire de paquets Android",
+                color = Subtle,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        LinearProgressIndicator(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = Accent,
+            trackColor = Elevated
+        )
+    }
+}
+
+@Composable
 private fun InstallationCard(
     update: InstallUpdate,
     working: Boolean,
@@ -530,7 +685,8 @@ private fun InstallationCard(
     onRetry: () -> Unit,
     onReset: () -> Unit,
     onCancel: () -> Unit,
-    onOpenApp: (String) -> Unit
+    onOpenApp: (String) -> Unit,
+    onInstall: () -> Unit = {}
 ) {
     val failed = update.phase == InstallPhase.ERROR
     val complete = update.phase == InstallPhase.SUCCESS
@@ -719,33 +875,9 @@ private fun InstallationCard(
             }
 
             if (working) {
-                Spacer(Modifier.height(22.dp))
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = Accent,
-                    trackColor = Elevated
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Traitement en cours…",
-                        color = Subtle,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                    Text(
-                        if (update.phase == InstallPhase.PREPARING) "Étape 2/4" else "Étape 3/4",
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(18.dp))
+                InstallingAnimation(phase = update.phase)
+                Spacer(Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = onCancel,
                     modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp),
@@ -753,7 +885,7 @@ private fun InstallationCard(
                     border = BorderStroke(1.dp, BorderSubtle)
                 ) {
                     Text(
-                        "Annuler la préparation",
+                        "Annuler l'installation",
                         color = Subtle,
                         style = MaterialTheme.typography.labelMedium
                     )
@@ -761,6 +893,60 @@ private fun InstallationCard(
             }
 
             when (update.phase) {
+                InstallPhase.FILE_SELECTED -> {
+                    Spacer(Modifier.height(22.dp))
+                    if (!sourceAllowed) {
+                        Surface(
+                            color = WarningContainer.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Warning.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_shield),
+                                    contentDescription = null,
+                                    tint = Warning,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Autorisation requise",
+                                        color = White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        "Active les sources inconnues pour installer cette application.",
+                                        color = Subtle,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                TextButton(
+                                    onClick = onEnableSource,
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Warning)
+                                ) {
+                                    Text("Activer", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
+                    PrimaryAction(
+                        text = "Installer",
+                        onClick = onInstall,
+                        icon = R.drawable.ic_install
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    SecondaryAction("Choisir un autre fichier", onSelectFile)
+                    Spacer(Modifier.height(4.dp))
+                    TertiaryAction("Annuler", onReset)
+                }
+
                 InstallPhase.NEEDS_PERMISSION -> {
                     Spacer(Modifier.height(24.dp))
                     PrimaryAction("Autoriser l'installation", onEnableSource, icon = R.drawable.ic_shield)
@@ -1238,3 +1424,30 @@ private fun CancelledPreview() {
         onReset = {}
     )
 }
+
+@Preview(name = "Fichier sélectionné prêt à installer", showBackground = true, widthDp = 412, heightDp = 892)
+@Composable
+private fun FileSelectedPreview() {
+    BundleTapScreen(
+        update = InstallUpdate(
+            InstallPhase.FILE_SELECTED,
+            "Fichier prêt",
+            "Clique sur « Installer » pour lancer l'installation sur ton appareil.",
+            fileName = "Spotify_v8.9.10.xapk",
+            appLabel = "Spotify",
+            appVersion = "8.9.10",
+            splitCount = 3
+        ),
+        busy = false,
+        sourceAllowed = true,
+        canConfirm = false,
+        canRetry = false,
+        onSelectFile = {},
+        onEnableSource = {},
+        onConfirm = {},
+        onRetry = {},
+        onReset = {},
+        onInstall = {}
+    )
+}
+
