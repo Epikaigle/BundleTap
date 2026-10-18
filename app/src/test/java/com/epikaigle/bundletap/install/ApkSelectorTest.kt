@@ -97,4 +97,43 @@ class ApkSelectorTest {
             ApkSelector.select(listOf("app.apk"), abis, 480, listOf("fr"))
         )
     }
+
+    @Test fun multipleStandalonesSelectsDeviceAbi() {
+        val actual = ApkSelector.select(
+            listOf(
+                "standalones/app-x86.apk",
+                "standalones/app-arm64_v8a.apk",
+                "standalones/app-armeabi_v7a.apk"
+            ),
+            abis, 480, listOf("fr")
+        )
+        assertEquals(listOf("standalones/app-arm64_v8a.apk"), actual)
+    }
+
+    @Test fun inferredBaseFromSingleNonSplitCandidate() {
+        val actual = ApkSelector.select(
+            listOf(
+                "com.mycustom.app.apk",
+                "config.arm64_v8a.apk",
+                "config.xxhdpi.apk"
+            ),
+            abis, 480, listOf("fr")
+        )
+        assertEquals(
+            listOf("com.mycustom.app.apk", "config.arm64_v8a.apk", "config.xxhdpi.apk"),
+            actual
+        )
+    }
+
+    @Test fun abiAliasRecognizesArm64AndAarch64() {
+        val actual = ApkSelector.select(
+            listOf(
+                "base.apk",
+                "split_config.arm64.apk",
+                "split_config.x86.apk"
+            ),
+            abis, 480, listOf("fr")
+        )
+        assertEquals(listOf("base.apk", "split_config.arm64.apk"), actual)
+    }
 }

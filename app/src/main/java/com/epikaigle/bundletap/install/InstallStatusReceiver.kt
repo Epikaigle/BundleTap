@@ -47,30 +47,35 @@ class InstallStatusReceiver : BroadcastReceiver() {
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
+                val installedPkg = intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME)
+                    ?: InstallUpdates.current.value.packageName
                 InstallUpdates.pendingConfirmation = null
                 InstallUpdates.clearSession(context)
                 InstallUpdates.publish(context, InstallUpdate(
                     InstallPhase.SUCCESS, "Installation terminée",
-                    "L'application est installée sur ton Pixel."
+                    "L'application est installée sur ton appareil.",
+                    packageName = installedPkg
                 ))
             }
             else -> {
+                val isAborted = code == PackageInstaller.STATUS_FAILURE_ABORTED
+                val title = if (isAborted) "Installation annulée" else "Installation impossible"
                 val explanation = when (code) {
                     PackageInstaller.STATUS_FAILURE_ABORTED ->
-                        "L'installation a été annulée. Tu peux réessayer."
+                        "L'installation a été annulée. Tu peux relancer ce fichier ou en choisir un autre."
                     PackageInstaller.STATUS_FAILURE_BLOCKED ->
-                        "Android a bloqué l'installation. Vérifie les autorisations et la provenance du fichier."
+                        "Android a bloqué l'installation. Vérifie les autorisations de source inconnue et la provenance du fichier."
                     PackageInstaller.STATUS_FAILURE_CONFLICT ->
-                        "La signature ou la version ne correspond pas à l'application déjà installée."
+                        "Conflit de signature : une version incompatible est déjà présente sur l'appareil. Désinstalle l'ancienne version, puis réessaie."
                     PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-                        "Ce fichier n'est pas compatible avec ton Pixel 7 Pro."
+                        "Ce fichier n'est pas compatible avec l'architecture de ton appareil."
                     PackageInstaller.STATUS_FAILURE_INVALID ->
                         "Le fichier semble incomplet, mal signé ou contient des modules incompatibles."
                     PackageInstaller.STATUS_FAILURE_STORAGE ->
-                        "Le stockage est insuffisant. Libère de l'espace, puis réessaie."
+                        "Stockage saturé : libère de l'espace sur l'appareil, puis réessaie."
                     else -> "L'installation n'a pas abouti. Vérifie le fichier et réessaie."
                 }
-                fail(context, "Installation impossible", explanation, diagnostic)
+                fail(context, title, explanation, diagnostic)
             }
         }
     }

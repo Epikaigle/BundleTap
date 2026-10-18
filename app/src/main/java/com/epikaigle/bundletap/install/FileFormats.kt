@@ -8,4 +8,7 @@ object FileFormats {
 
     fun isInstallableName(name: String): Boolean =
         name.substringAfterLast('.', "").lowercase(Locale.ROOT) in supported
+
+    fun formatOf(name: String): String =
+        name.substringAfterLast('.', "").uppercase(Locale.ROOT)
 }

@@ -10,7 +10,17 @@ import kotlin.math.ln
  * Metadata from an XAPK may explicitly identify an arbitrarily named base.
  */
 object ApkSelector {
-    private val abiTokens = listOf("arm64_v8a", "armeabi_v7a", "x86_64", "x86")
+    private val abiTokenMap = mapOf(
+        "arm64_v8a" to "arm64_v8a",
+        "arm64" to "arm64_v8a",
+        "aarch64" to "arm64_v8a",
+        "armeabi_v7a" to "armeabi_v7a",
+        "armeabi" to "armeabi_v7a",
+        "armv7" to "armeabi_v7a",
+        "x86_64" to "x86_64",
+        "x64" to "x86_64",
+        "x86" to "x86"
+    )
     private val densityTokens = linkedMapOf(
         "ldpi" to 120, "mdpi" to 160, "tvdpi" to 213,
         "hdpi" to 240, "xhdpi" to 320, "xxhdpi" to 480, "xxxhdpi" to 640
@@ -28,6 +38,10 @@ object ApkSelector {
         require(paths.distinct().size == paths.size) { "Noms d'APK dupliqués." }
         if (paths.size == 1) return paths
 
+        val deviceAbis = supportedAbis.map {
+            it.lowercase(Locale.ROOT).replace('-', '_')
+        }
+
         val hasSplits = paths.any { it.startsWith("splits/", ignoreCase = true) }
         val candidates = paths.filter { path ->
             val lower = path.lowercase(Locale.ROOT)
@@ -40,8 +54,22 @@ object ApkSelector {
                 it.startsWith("standalones/", ignoreCase = true)
             }
             if (standalones.size == 1) return standalones
+            if (standalones.isNotEmpty()) {
+                for (abi in deviceAbis) {
+                    val match = standalones.firstOrNull { path ->
+                        val s = stem(path)
+                        abiTokenMap.entries.any { (token, canonical) ->
+                            canonical == abi && hasToken(s, token)
+                        }
+                    }
+                    if (match != null) return listOf(match)
+                }
+                throw IllegalArgumentException(
+                    "Cette archive contient des variantes standalone incompatibles avec ton appareil."
+                )
+            }
             throw IllegalArgumentException(
-                "Cette archive contient des variantes standalone ambiguës."
+                "Cette archive ne contient aucun composant d'installation exploitable."
             )
         }
 
@@ -65,14 +93,22 @@ object ApkSelector {
             it.substringAfterLast('/').lowercase(Locale.ROOT) in
                 setOf("base.apk", "base-master.apk", "base_master.apk")
         }
-        val base = hinted ?: bases.singleOrNull()
+        val inferredBase = if (hinted == null && bases.isEmpty()) {
+            val nonSplits = candidates.filter { path ->
+                val s = stem(path)
+                val isAbi = abiTokenMap.keys.any { hasToken(s, it) }
+                val isDensity = densityFor(path) != null
+                val isLang = languageFor(path, emptySet()) != null
+                !isAbi && !isDensity && !isLang
+            }
+            if (nonSplits.size == 1) nonSplits.single() else null
+        } else null
+
+        val base = hinted ?: bases.singleOrNull() ?: inferredBase
             ?: throw IllegalArgumentException(
                 "APK principal introuvable ou ambigu. Vérifie l'archive."
             )
 
-        val deviceAbis = supportedAbis.map {
-            it.lowercase(Locale.ROOT).replace('-', '_')
-        }
         val wantedLanguages = locales.map { it.substringBefore('-').lowercase(Locale.ROOT) }
             .toSet() + "en"
 
@@ -83,8 +119,9 @@ object ApkSelector {
         }.toSet()
         val others = candidates.filterNot { it == base }
         val abiCandidates = others.mapNotNull { path ->
-            val matched = abiTokens.firstOrNull { hasToken(stem(path), it) }
-            matched?.let { path to it }
+            val s = stem(path)
+            val matched = abiTokenMap.entries.firstOrNull { hasToken(s, it.key) }
+            matched?.let { path to it.value }
         }
         val densityCandidates = others.filterNot { p ->
             abiCandidates.any { it.first == p }

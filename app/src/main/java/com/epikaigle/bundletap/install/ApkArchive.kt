@@ -18,7 +18,11 @@ import java.util.zip.ZipFile
 data class PreparedApks(
     val name: String,
     val apks: List<File>,
-    val workspace: File
+    val workspace: File,
+    val packageName: String? = null,
+    val appLabel: String? = null,
+    val appVersion: String? = null,
+    val totalBytes: Long = 0L
 ) {
     fun dispose() { workspace.deleteRecursively() }
 }
@@ -74,7 +78,7 @@ class ApkArchive(private val context: Context) {
                     val selected = ZipFile(staged).use { zip ->
                         extractSelected(zip, ext, workspace)
                     }
-                    check(staged.delete()) { "Impossible de nettoyer le cache compressé." }
+                    if (!staged.delete()) staged.deleteOnExit()
                     selected
                 }
             }
@@ -86,7 +90,22 @@ class ApkArchive(private val context: Context) {
             require(info.applicationInfo?.minSdkVersion?.let {
                 it <= Build.VERSION.SDK_INT
             } != false) { "Ce fichier demande une version Android plus récente." }
-            return PreparedApks(name, apks, workspace)
+            info.applicationInfo?.sourceDir = apks.first().absolutePath
+            info.applicationInfo?.publicSourceDir = apks.first().absolutePath
+            val label = runCatching {
+                info.applicationInfo?.loadLabel(context.packageManager)?.toString()
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+            val version = info.versionName?.takeIf { it.isNotBlank() }
+            val totalBytes = apks.sumOf { it.length() }
+            return PreparedApks(
+                name = name,
+                apks = apks,
+                workspace = workspace,
+                packageName = info.packageName,
+                appLabel = label,
+                appVersion = version,
+                totalBytes = totalBytes
+            )
         } catch (error: Exception) {
             workspace.deleteRecursively()
             throw error
@@ -227,7 +246,7 @@ class ApkArchive(private val context: Context) {
     }
 
     private fun cleanAbandonedCache() {
-        val threshold = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+        val threshold = System.currentTimeMillis() - 60L * 60 * 1000
         context.cacheDir.listFiles()?.forEach { file ->
             if (file.isDirectory && file.name.startsWith("installation-") &&
                 file.lastModified() < threshold) {

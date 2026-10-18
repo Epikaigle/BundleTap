@@ -12,6 +12,10 @@ class PackageInstallEngine(private val context: Context) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+        if (prepared.totalBytes > 0L) {
+            params.setSize(prepared.totalBytes)
+        }
+        prepared.packageName?.let { params.setAppPackageName(it) }
         val sessionId = installer.createSession(params)
         InstallUpdates.activateSession(context, sessionId)
         var committed = false
@@ -20,7 +24,7 @@ class PackageInstallEngine(private val context: Context) {
                 prepared.apks.forEachIndexed { index, apk ->
                     FileInputStream(apk).use { input ->
                         session.openWrite("apk-$index.apk", 0L, apk.length()).use { output ->
-                            input.copyTo(output, 64 * 1024)
+                            input.copyTo(output, 128 * 1024)
                             session.fsync(output)
                         }
                     }
@@ -34,9 +38,18 @@ class PackageInstallEngine(private val context: Context) {
                     context, sessionId, status,
                     PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
+                val splitMsg = if (prepared.apks.size > 1) {
+                    "${prepared.apks.size} modules compatibles transmis à Android."
+                } else {
+                    "Le fichier a été transmis à Android."
+                }
                 InstallUpdates.publish(context, InstallUpdate(
                     InstallPhase.INSTALLING, "Installation en cours",
-                    "Les fichiers ont été transmis à Android."
+                    splitMsg,
+                    packageName = prepared.packageName,
+                    splitCount = prepared.apks.size,
+                    appLabel = prepared.appLabel,
+                    appVersion = prepared.appVersion
                 ))
                 session.commit(callback.intentSender)
                 committed = true

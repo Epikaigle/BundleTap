@@ -39,17 +39,23 @@ class MainActivity : ComponentActivity() {
         sourceAllowed = packageManager.canRequestPackageInstalls()
         setContent {
             val update by InstallUpdates.current.collectAsState()
+            val canOpenApp = androidx.compose.runtime.remember(update.packageName) {
+                update.packageName?.let { packageManager.getLaunchIntentForPackage(it) != null } ?: false
+            }
             BundleTapScreen(
                 update = update,
                 busy = installer.busy,
                 sourceAllowed = sourceAllowed,
                 canConfirm = InstallUpdates.pendingConfirmation != null,
                 canRetry = installer.retry() != null && update.phase == InstallPhase.ERROR,
+                canOpenApp = canOpenApp,
                 onSelectFile = { picker.launch(arrayOf("*/*")) },
                 onEnableSource = ::openUnknownSourcesSettings,
                 onConfirm = ::launchPendingConfirmation,
                 onRetry = { installer.retry()?.let(::openFile) },
-                onReset = installer::clear
+                onReset = installer::clear,
+                onCancel = installer::cancel,
+                onOpenApp = ::openInstalledApp
             )
         }
         // Do not process ACTION_VIEW twice after rotating the phone.
@@ -82,11 +88,18 @@ class MainActivity : ComponentActivity() {
 
     private fun openFile(uri: Uri) {
         val phase = InstallUpdates.current.value.phase
-        if (installer.busy || phase == InstallPhase.INSTALLING ||
-            phase == InstallPhase.AWAITING_CONFIRMATION) {
-            Toast.makeText(this, "Termine l'installation en cours avant d'en ouvrir une autre.",
+        if (installer.busy || phase == InstallPhase.INSTALLING) {
+            Toast.makeText(this, "Traitement en cours, patiente un instant.",
                 Toast.LENGTH_SHORT).show()
             return
+        }
+        if (phase == InstallPhase.AWAITING_CONFIRMATION) {
+            InstallUpdates.abandonCurrentSession(this)
+        }
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
         }
         val fileName = runCatching { ApkArchive(this).displayName(uri) }
             .getOrNull() ?: "Fichier inconnu"
@@ -103,6 +116,17 @@ class MainActivity : ComponentActivity() {
             openUnknownSourcesSettings()
         } else {
             installer.start(uri)
+        }
+    }
+
+    private fun openInstalledApp(packageName: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent != null) {
+            runCatching { startActivity(launchIntent) }.onFailure {
+                Toast.makeText(this, "Impossible d'ouvrir l'application.", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "Aucune activité principale pour cette application.", Toast.LENGTH_SHORT).show()
         }
     }
 

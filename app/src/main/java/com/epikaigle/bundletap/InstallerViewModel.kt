@@ -13,6 +13,7 @@ import com.epikaigle.bundletap.install.InstallUpdate
 import com.epikaigle.bundletap.install.InstallUpdates
 import com.epikaigle.bundletap.install.PackageInstallEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -26,6 +27,7 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
     var selectedUri: Uri? = null
         private set
     private var deferredUri: Uri? = null
+    private var installJob: Job? = null
 
     init {
         InstallUpdates.restore(application)
@@ -59,8 +61,8 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
     fun start(uri: Uri) {
         val context = getApplication<Application>()
         val phase = InstallUpdates.current.value.phase
-        if (busy || phase == InstallPhase.INSTALLING ||
-            phase == InstallPhase.AWAITING_CONFIRMATION) return
+        if (busy && phase == InstallPhase.INSTALLING) return
+        installJob?.cancel()
         selectedUri = uri
         deferredUri = null
         busy = true
@@ -69,10 +71,10 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
         InstallUpdates.publish(context, InstallUpdate(
             InstallPhase.PREPARING,
             "Préparation du fichier",
-            "Analyse et sélection des modules compatibles avec ton Pixel.",
+            "Analyse et sélection des modules compatibles avec ton appareil.",
             fileName = filename
         ))
-        viewModelScope.launch {
+        installJob = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val prepared = ApkArchive(context).prepare(uri)
@@ -83,6 +85,7 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 InstallUpdates.publish(context, InstallUpdate(
                     InstallPhase.ERROR,
                     "Fichier non installé",
@@ -97,12 +100,29 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun retry(): Uri? = selectedUri
 
-    fun clear() {
-        val phase = InstallUpdates.current.value.phase
-        if (busy || phase == InstallPhase.INSTALLING ||
-            phase == InstallPhase.AWAITING_CONFIRMATION) return
+    fun cancel() {
+        installJob?.cancel()
+        installJob = null
+        busy = false
+        val app = getApplication<Application>()
+        InstallUpdates.abandonCurrentSession(app)
         selectedUri = null
         deferredUri = null
-        InstallUpdates.reset(getApplication())
+        InstallUpdates.reset(app)
+    }
+
+    fun clear() {
+        val phase = InstallUpdates.current.value.phase
+        if (busy && phase == InstallPhase.INSTALLING) return
+        installJob?.cancel()
+        installJob = null
+        busy = false
+        val app = getApplication<Application>()
+        if (phase == InstallPhase.AWAITING_CONFIRMATION || phase == InstallPhase.PREPARING) {
+            InstallUpdates.abandonCurrentSession(app)
+        }
+        selectedUri = null
+        deferredUri = null
+        InstallUpdates.reset(app)
     }
 }

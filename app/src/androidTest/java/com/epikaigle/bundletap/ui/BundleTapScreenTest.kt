@@ -1,7 +1,7 @@
 package com.epikaigle.bundletap.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.epikaigle.bundletap.install.InstallPhase
@@ -76,5 +76,42 @@ class BundleTapScreenTest {
             )
         }
         compose.onNodeWithText("Confirmer dans Android").assertDoesNotExist()
+    }
+
+    @Test fun successOffersOpenActionWhenAvailable() {
+        var appOpened = false
+        compose.setContent {
+            BundleTapScreen(
+                update = InstallUpdate(
+                    InstallPhase.SUCCESS, "Installation terminée",
+                    "L'application est installée.", "test.xapk",
+                    packageName = "com.test.app"
+                ),
+                busy = false, sourceAllowed = true, canConfirm = false, canRetry = false,
+                canOpenApp = true,
+                onSelectFile = {}, onEnableSource = {}, onConfirm = {},
+                onRetry = {}, onReset = {},
+                onOpenApp = { if (it == "com.test.app") appOpened = true }
+            )
+        }
+        compose.onNodeWithText("Ouvrir l'application").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(appOpened) }
+    }
+
+    @Test fun confirmationAllowsCancellation() {
+        var cancelled = false
+        compose.setContent {
+            BundleTapScreen(
+                update = InstallUpdate(
+                    InstallPhase.AWAITING_CONFIRMATION, "Confirmation requise",
+                    "Valide l'installation.", "example.apkm"
+                ),
+                busy = false, sourceAllowed = true, canConfirm = true, canRetry = false,
+                onSelectFile = {}, onEnableSource = {}, onConfirm = {},
+                onRetry = {}, onReset = { cancelled = true }
+            )
+        }
+        compose.onNodeWithText("Annuler l'installation").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(cancelled) }
     }
 }
