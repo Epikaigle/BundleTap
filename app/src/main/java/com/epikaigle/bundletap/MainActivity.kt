@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
         sourceAllowed = packageManager.canRequestPackageInstalls()
         setContent {
             val update by InstallUpdates.current.collectAsState()
-            val canOpenApp = androidx.compose.runtime.remember(update.packageName) {
+            val canOpenApp = androidx.compose.runtime.remember(update.packageName, update.phase) {
                 update.packageName?.let { packageManager.getLaunchIntentForPackage(it) != null } ?: false
             }
             BundleTapScreen(
@@ -104,21 +104,29 @@ class MainActivity : ComponentActivity() {
         }
         val fileName = runCatching { ApkArchive(this).displayName(uri) }
             .getOrNull() ?: "Fichier inconnu"
-        if (!FileFormats.isInstallableName(fileName)) {
+        val ext = FileFormats.extractExtension(fileName)
+        val isRecognizedExt = FileFormats.isSupportedExtension(ext)
+        if (!isRecognizedExt) {
             val mime = runCatching { contentResolver.getType(uri) }.getOrNull()
             val isRecognizedMime = mime == "application/vnd.android.package-archive" ||
                 mime in setOf(
                     "application/zip", "application/x-zip", "application/x-zip-compressed",
-                    "application/x-apks", "application/x-apkm", "application/x-xapk", "application/x-apkx"
+                    "application/x-apks", "application/x-apkm", "application/x-xapk", "application/x-apkx",
+                    "application/apk", "application/bapks"
                 )
             if (!isRecognizedMime) {
-                InstallUpdates.publish(this, InstallUpdate(
-                    InstallPhase.ERROR,
-                    "Format non pris en charge",
-                    "Choisis un fichier APK, APKM, APKS, XAPK, APKX ou ZIP.",
-                    fileName = fileName
-                ))
-                return
+                val hasZipMagic = runCatching {
+                    contentResolver.openInputStream(uri)?.use { FileFormats.hasZipMagicHeader(it) }
+                }.getOrNull() ?: false
+                if (!hasZipMagic) {
+                    InstallUpdates.publish(this, InstallUpdate(
+                        InstallPhase.ERROR,
+                        "Format non pris en charge",
+                        "Choisis un fichier APK, APKM, APKS, XAPK, APKX ou ZIP.",
+                        fileName = fileName
+                    ))
+                    return
+                }
             }
         }
         installer.selectFile(uri)

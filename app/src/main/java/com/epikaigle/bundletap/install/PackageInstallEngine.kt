@@ -22,8 +22,9 @@ class PackageInstallEngine(private val context: Context) {
         try {
             installer.openSession(sessionId).use { session ->
                 prepared.apks.forEachIndexed { index, apk ->
+                    val partName = if (index == 0) "base.apk" else "split_$index.apk"
                     FileInputStream(apk).use { input ->
-                        session.openWrite("apk-$index.apk", 0L, apk.length()).use { output ->
+                        session.openWrite(partName, 0L, apk.length()).use { output ->
                             input.copyTo(output, 128 * 1024)
                             session.fsync(output)
                         }

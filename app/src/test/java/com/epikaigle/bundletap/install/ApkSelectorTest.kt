@@ -1,6 +1,7 @@
 package com.epikaigle.bundletap.install
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -136,4 +137,70 @@ class ApkSelectorTest {
         )
         assertEquals(listOf("base.apk", "split_config.arm64.apk"), actual)
     }
+
+    @Test fun abiGroupingHandlesHyphensAndAliasesWithoutDuplicating() {
+        // Hyphens instead of underscores (e.g. arm64-v8a vs armeabi-v7a)
+        val actual = ApkSelector.select(
+            listOf(
+                "base.apk",
+                "split_config.arm64-v8a.apk",
+                "split_config.armeabi-v7a.apk",
+                "split_config.x86.apk"
+            ),
+            abis, 480, listOf("fr")
+        )
+        // Must only select ONE ABI split (the highest priority ABI: arm64-v8a), NEVER both!
+        assertEquals(listOf("base.apk", "split_config.arm64-v8a.apk"), actual)
+    }
+
+    @Test fun densityGroupingHandlesDpiAndParentheses() {
+        val actual = ApkSelector.select(
+            listOf(
+                "base.apk",
+                "base-480dpi.apk",
+                "base-320dpi.apk",
+                "feature (xxhdpi).apk",
+                "feature (mdpi).apk"
+            ),
+            abis, 480, listOf("fr")
+        )
+        assertTrue("base-480dpi.apk" in actual)
+        assertFalse("base-320dpi.apk" in actual)
+        assertTrue("feature (xxhdpi).apk" in actual)
+        assertFalse("feature (mdpi).apk" in actual)
+    }
+
+    @Test fun languageExtractionHandlesBcp47AndRegionalAndBrackets() {
+        val actual = ApkSelector.select(
+            listOf(
+                "base.apk",
+                "split_config.fr_rFR.apk",
+                "split_config.b+es+419.apk",
+                "split_config.ja.apk",
+                "split_config [de].apk"
+            ),
+            abis, 480, listOf("fr-FR", "es-419")
+        )
+        assertTrue("split_config.fr_rFR.apk" in actual)
+        assertTrue("split_config.b+es+419.apk" in actual)
+        assertFalse("split_config.ja.apk" in actual)
+        assertFalse("split_config [de].apk" in actual)
+    }
+
+    @Test fun caseInsensitiveFilenamesInSelector() {
+        val actual = ApkSelector.select(
+            listOf(
+                "BASE.APK",
+                "SPLIT_CONFIG.ARM64_V8A.APK",
+                "SPLIT_CONFIG.X86.APK",
+                "SPLIT_CONFIG.FR.APK"
+            ),
+            abis, 480, listOf("fr")
+        )
+        assertEquals(
+            listOf("BASE.APK", "SPLIT_CONFIG.ARM64_V8A.APK", "SPLIT_CONFIG.FR.APK"),
+            actual
+        )
+    }
 }
+

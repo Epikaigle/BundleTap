@@ -56,6 +56,13 @@
                 <data android:pathPattern=".*\\.apkx" />
                 <data android:pathPattern=".*\\.bapks" />
                 <data android:pathPattern=".*\\.zip" />
+                <data android:pathPattern=".*\\.APK" />
+                <data android:pathPattern=".*\\.APKS" />
+                <data android:pathPattern=".*\\.APKM" />
+                <data android:pathPattern=".*\\.XAPK" />
+                <data android:pathPattern=".*\\.APKX" />
+                <data android:pathPattern=".*\\.BAPKS" />
+                <data android:pathPattern=".*\\.ZIP" />
                 <data android:pathPattern=".*\\..*\\.apk" />
                 <data android:pathPattern=".*\\..*\\.apks" />
                 <data android:pathPattern=".*\\..*\\.apkm" />
@@ -63,6 +70,13 @@
                 <data android:pathPattern=".*\\..*\\.apkx" />
                 <data android:pathPattern=".*\\..*\\.bapks" />
                 <data android:pathPattern=".*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\.APK" />
+                <data android:pathPattern=".*\\..*\\.APKS" />
+                <data android:pathPattern=".*\\..*\\.APKM" />
+                <data android:pathPattern=".*\\..*\\.XAPK" />
+                <data android:pathPattern=".*\\..*\\.APKX" />
+                <data android:pathPattern=".*\\..*\\.BAPKS" />
+                <data android:pathPattern=".*\\..*\\.ZIP" />
             </intent-filter>
 
             <intent-filter>
@@ -79,6 +93,13 @@
                 <data android:pathPattern=".*\\.apkx" />
                 <data android:pathPattern=".*\\.bapks" />
                 <data android:pathPattern=".*\\.zip" />
+                <data android:pathPattern=".*\\.APK" />
+                <data android:pathPattern=".*\\.APKS" />
+                <data android:pathPattern=".*\\.APKM" />
+                <data android:pathPattern=".*\\.XAPK" />
+                <data android:pathPattern=".*\\.APKX" />
+                <data android:pathPattern=".*\\.BAPKS" />
+                <data android:pathPattern=".*\\.ZIP" />
                 <data android:pathPattern=".*\\..*\\.apk" />
                 <data android:pathPattern=".*\\..*\\.apks" />
                 <data android:pathPattern=".*\\..*\\.apkm" />
@@ -86,6 +107,13 @@
                 <data android:pathPattern=".*\\..*\\.apkx" />
                 <data android:pathPattern=".*\\..*\\.bapks" />
                 <data android:pathPattern=".*\\..*\\.zip" />
+                <data android:pathPattern=".*\\..*\\.APK" />
+                <data android:pathPattern=".*\\..*\\.APKS" />
+                <data android:pathPattern=".*\\..*\\.APKM" />
+                <data android:pathPattern=".*\\..*\\.XAPK" />
+                <data android:pathPattern=".*\\..*\\.APKX" />
+                <data android:pathPattern=".*\\..*\\.BAPKS" />
+                <data android:pathPattern=".*\\..*\\.ZIP" />
             </intent-filter>
 
             <intent-filter>

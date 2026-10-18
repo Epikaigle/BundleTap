@@ -48,28 +48,41 @@ class ApkArchive(private val context: Context) {
         )?.use {
             if (it.moveToFirst()) {
                 val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index >= 0) return (it.getString(index) ?: "Fichier Android")
-                    .substringAfterLast('/').take(180)
+                if (index >= 0) {
+                    val raw = it.getString(index)
+                    if (!raw.isNullOrBlank()) {
+                        return FileFormats.cleanFileName(raw)
+                    }
+                }
             }
         }
-        return (uri.lastPathSegment?.substringAfterLast('/') ?: "Fichier Android").take(180)
+        val fallback = uri.lastPathSegment ?: uri.path ?: "Fichier Android"
+        return FileFormats.cleanFileName(fallback)
     }
 
     fun prepare(uri: Uri): PreparedApks {
         val name = displayName(uri)
-        var ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        if (ext !in FileFormats.supported && ext != "zip") {
+        var ext = FileFormats.extractExtension(name)
+        if (!FileFormats.isSupportedExtension(ext)) {
             val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
             if (mime == "application/vnd.android.package-archive" || mime == "application/apk") {
                 ext = "apk"
             } else if (mime in setOf(
                     "application/zip", "application/x-zip", "application/x-zip-compressed",
-                    "application/x-apks", "application/x-apkm", "application/x-xapk", "application/x-apkx"
+                    "application/x-apks", "application/x-apkm", "application/x-xapk", "application/x-apkx",
+                    "application/bapks"
                 )) {
                 ext = "zip"
+            } else {
+                val isZip = runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { FileFormats.hasZipMagicHeader(it) }
+                }.getOrNull() ?: false
+                if (isZip) {
+                    ext = "zip"
+                }
             }
         }
-        require(ext in setOf("apk", "apks", "apkm", "xapk", "apkx", "bapks", "zip")) {
+        require(FileFormats.isSupportedExtension(ext)) {
             "Format non pris en charge : APK, APKS, APKM, XAPK, APKX ou ZIP."
         }
         cleanAbandonedCache()
@@ -86,11 +99,23 @@ class ApkArchive(private val context: Context) {
                 } else {
                     val staged = File(workspace, "archive.zip")
                     FileOutputStream(staged).use { boundedCopy(input, it, MAX_ARCHIVE_BYTES) }
-                    val selected = ZipFile(staged).use { zip ->
-                        extractSelected(zip, ext, workspace)
+                    val isDirectApk = runCatching {
+                        ZipFile(staged).use { zip ->
+                            zip.getEntry("AndroidManifest.xml") != null &&
+                                zip.entries().asSequence().none { it.name.endsWith(".apk", ignoreCase = true) }
+                        }
+                    }.getOrDefault(false)
+                    if (isDirectApk) {
+                        val baseOutput = File(workspace, "base.apk")
+                        staged.renameTo(baseOutput)
+                        listOf(baseOutput)
+                    } else {
+                        val selected = ZipFile(staged).use { zip ->
+                            extractSelected(zip, ext, workspace)
+                        }
+                        if (!staged.delete()) staged.deleteOnExit()
+                        selected
                     }
-                    if (!staged.delete()) staged.deleteOnExit()
-                    selected
                 }
             }
             require(apks.isNotEmpty()) { "Aucun APK compatible avec cet appareil." }
@@ -139,7 +164,8 @@ class ApkArchive(private val context: Context) {
                 // Ignore OBB files gracefully; the APK itself can still be installed
                 continue
             }
-            require(!entry.name.startsWith("/") && !entry.name.contains("\u0000")) {
+            require(!entry.name.startsWith("/") && !entry.name.contains("\u0000") &&
+                !name.contains("..")) {
                 "Nom de fichier suspect dans l'archive."
             }
             val limit = if (lower.endsWith(".apk")) MAX_APK_BYTES else MAX_OTHER_BYTES
@@ -276,7 +302,7 @@ class ApkArchive(private val context: Context) {
     }
 
     private fun cleanAbandonedCache() {
-        val threshold = System.currentTimeMillis() - 60L * 60 * 1000
+        val threshold = System.currentTimeMillis() - 15L * 60 * 1000
         context.cacheDir.listFiles()?.forEach { file ->
             if (file.isDirectory && file.name.startsWith("installation-") &&
                 file.lastModified() < threshold) {

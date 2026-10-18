@@ -17,15 +17,19 @@ object ApkSelector {
         "armeabi_v7a" to "armeabi_v7a",
         "armeabi" to "armeabi_v7a",
         "armv7" to "armeabi_v7a",
+        "armv7a" to "armeabi_v7a",
+        "arm" to "armeabi_v7a",
         "x86_64" to "x86_64",
         "x64" to "x86_64",
-        "x86" to "x86"
+        "x86" to "x86",
+        "riscv64" to "riscv64"
     )
     private val densityTokens = linkedMapOf(
         "ldpi" to 120, "mdpi" to 160, "tvdpi" to 213,
         "hdpi" to 240, "xhdpi" to 320, "xxhdpi" to 480, "xxxhdpi" to 640
     )
-    private val languages = Locale.getISOLanguages().toSet() + setOf("fil", "in", "iw", "ji")
+    private val languages = Locale.getISOLanguages().toSet() +
+        setOf("fil", "in", "iw", "ji", "id", "he", "yi")
 
     fun select(
         paths: List<String>,
@@ -60,11 +64,12 @@ object ApkSelector {
             }
             if (standalones.size == 1) return standalones
             if (standalones.isNotEmpty()) {
+                val sortedAbiKeys = abiTokenMap.keys.sortedByDescending { it.length }
                 for (abi in deviceAbis) {
                     val match = standalones.firstOrNull { path ->
                         val s = stem(path)
-                        abiTokenMap.entries.any { (token, canonical) ->
-                            canonical == abi && hasToken(s, token)
+                        sortedAbiKeys.any { token ->
+                            abiTokenMap[token] == abi && hasToken(s, token)
                         }
                     }
                     if (match != null) return listOf(match)
@@ -96,7 +101,7 @@ object ApkSelector {
         if (hinted == null && universal.size == 1) return universal
         val bases = candidates.filter {
             it.substringAfterLast('/').lowercase(Locale.ROOT) in
-                setOf("base.apk", "base-master.apk", "base_master.apk", "main.apk", "master.apk")
+                setOf("base.apk", "base-master.apk", "base_master.apk", "base.master.apk", "main.apk", "master.apk")
         }
         val inferredBase = if (hinted == null && bases.isEmpty()) {
             val nonSplits = candidates.filter { path ->
@@ -121,8 +126,15 @@ object ApkSelector {
                 "APK principal introuvable ou ambigu. Vérifie l'archive."
             )
 
-        val wantedLanguages = locales.map { it.substringBefore('-').lowercase(Locale.ROOT) }
-            .toSet() + "en"
+        val wantedLanguages = locales.flatMap {
+            val l = it.substringBefore('-').substringBefore('_').lowercase(Locale.ROOT)
+            when (l) {
+                "id", "in" -> listOf("id", "in")
+                "he", "iw" -> listOf("he", "iw")
+                "yi", "ji" -> listOf("yi", "ji")
+                else -> listOf(l)
+            }
+        }.toSet() + "en"
 
         val masterPrefixes = candidates.mapNotNull { candidate ->
             val s = stem(candidate)
@@ -130,16 +142,17 @@ object ApkSelector {
             suffix?.let { s.substring(0, it.range.first) }
         }.toSet()
         val others = candidates.filterNot { it == base }
+        val sortedAbiKeys = abiTokenMap.keys.sortedByDescending { it.length }
         val abiCandidates = others.mapNotNull { path ->
             val s = stem(path)
-            val matched = abiTokenMap.entries.firstOrNull { hasToken(s, it.key) }
-            matched?.let { path to it.value }
+            val matchedKey = sortedAbiKeys.firstOrNull { hasToken(s, it) }
+            matchedKey?.let { path to abiTokenMap.getValue(it) }
         }
         val densityCandidates = others.filterNot { p ->
             abiCandidates.any { it.first == p }
         }.mapNotNull { p -> densityFor(p)?.let { p to it } }
 
-        val abiSelected = abiCandidates.groupBy { groupOf(it.first, it.second) }.values
+        val abiSelected = abiCandidates.groupBy { abiGroupOf(it.first) }.values
             .mapNotNull { group ->
                 val best = deviceAbis.firstOrNull { abi ->
                     group.any { it.second == abi }
@@ -148,7 +161,7 @@ object ApkSelector {
             }.toSet()
 
         val densitySelected = densityCandidates.groupBy {
-            groupOf(it.first, densityLabel(it.first))
+            densityGroupOf(it.first)
         }.values.mapNotNull { group ->
             group.minWithOrNull(compareBy<Pair<String, Int>> {
                 abs(ln(it.second.toDouble() / densityDpi.coerceAtLeast(1)))
@@ -171,43 +184,73 @@ object ApkSelector {
     }
 
     private fun stem(path: String) =
-        path.substringAfterLast('/').removeSuffix(".apk").lowercase(Locale.ROOT)
+        path.substringAfterLast('/')
+            .lowercase(Locale.ROOT)
+            .removeSuffix(".apk")
 
     private fun hasToken(stem: String, token: String): Boolean {
-        val normal = stem.replace('-', '_').replace('.', '_')
+        val normal = stem.replace(Regex("[^a-z0-9]"), "_")
         return Regex("(^|_)" + Regex.escape(token) + "(_|$)").containsMatchIn(normal)
+    }
+
+    private fun abiGroupOf(path: String): String {
+        val s = stem(path)
+        val normal = s.replace(Regex("[^a-z0-9]"), "_")
+        for (token in abiTokenMap.keys.sortedByDescending { it.length }) {
+            val match = Regex("(^|_)" + Regex.escape(token) + "(_|$)").find(normal)
+            if (match != null) {
+                return normal.substring(0, match.range.first).trimEnd('_')
+            }
+        }
+        return s
     }
 
     private fun densityFor(path: String): Int? {
         val s = stem(path)
         val symbolic = densityTokens.entries.firstOrNull { hasToken(s, it.key) }
         if (symbolic != null) return symbolic.value
-        return Regex("(?:^|[._-])(\\d{3,4})dpi(?:$|[._-])")
+        return Regex("(?:^|[^a-z0-9])(\\d{3,4})dpi(?:$|[^a-z0-9])")
             .find(s)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun densityGroupOf(path: String): String {
+        val s = stem(path)
+        val normal = s.replace(Regex("[^a-z0-9]"), "_")
+        for (token in densityTokens.keys.sortedByDescending { it.length }) {
+            val match = Regex("(^|_)" + Regex.escape(token) + "(_|$)").find(normal)
+            if (match != null) {
+                return normal.substring(0, match.range.first).trimEnd('_')
+            }
+        }
+        val numMatch = Regex("(?:^|_)\\d{3,4}dpi(?:_|$)").find(normal)
+        if (numMatch != null) {
+            return normal.substring(0, numMatch.range.first).trimEnd('_')
+        }
+        return s
     }
 
     private fun densityLabel(path: String): String {
         val s = stem(path)
         return densityTokens.keys.firstOrNull { hasToken(s, it) }
-            ?: Regex("(?:^|[._-])\\d{3,4}dpi$").find(s)?.value
-                ?.trimStart('.', '-', '_')
+            ?: Regex("(?:^|[^a-z0-9])(\\d{3,4})dpi(?:$|[^a-z0-9])").find(s)?.groupValues?.get(1)?.let { "${it}dpi" }
             ?: ""
-    }
-
-    private fun groupOf(path: String, qualifier: String): String {
-        val s = stem(path)
-        val escaped = Regex.escape(qualifier)
-        return s.replace(Regex("(?i)[._-]$escaped$"), "")
     }
 
     private fun languageFor(path: String, masterPrefixes: Set<String>): String? {
         val s = stem(path)
-        // Restrict to configuration suffixes, not dynamic feature module names.
-        val match = Regex("(?:^|[._-])([a-z]{2,3})$").find(s) ?: return null
-        val lang = match.groupValues[1]
+        val cleanStem = s.trimEnd { !it.isLetterOrDigit() }
+        val lang = when {
+            cleanStem.contains("b+") -> {
+                Regex("(?:^|[^a-z0-9])b\\+([a-z]{2,3})(?:\\+[a-zA-Z0-9]+)*$").find(cleanStem)?.groupValues?.get(1)
+            }
+            else -> {
+                val match = Regex("(?:^|[^a-z0-9])([a-z]{2,3})(?:[^a-z0-9]r?[a-z]{2})?$").find(cleanStem)
+                match?.groupValues?.get(1)
+            }
+        } ?: return null
         if (lang !in languages) return null
-        val prefix = s.substring(0, match.range.first)
+        val prefix = s.substringBeforeLast(lang).trimEnd('.', '_', '-', ' ', '(', '[', ']', ')')
         return if (prefix.endsWith("config") || prefix == "base" || prefix in masterPrefixes ||
-            prefix.startsWith("base_") || prefix.startsWith("base.")) lang else null
+            prefix.startsWith("base_") || prefix.startsWith("base.") || prefix.isEmpty()) lang else null
     }
 }
