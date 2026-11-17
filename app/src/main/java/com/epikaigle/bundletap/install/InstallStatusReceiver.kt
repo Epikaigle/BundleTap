@@ -39,8 +39,8 @@ class InstallStatusReceiver : BroadcastReceiver() {
                 InstallUpdates.pendingConfirmation = confirmation
                 InstallUpdates.publish(context, InstallUpdate(
                     InstallPhase.AWAITING_CONFIRMATION,
-                    "Confirmation requise",
-                    "Valide l'installation dans la fenêtre de sécurité Android."
+                    "Confirmation Android",
+                    ""
                 ))
                 // Android can block an activity launch from a background receiver.
                 // The visible Activity also exposes an explicit, accessible confirm button.
@@ -55,28 +55,27 @@ class InstallStatusReceiver : BroadcastReceiver() {
                 InstallUpdates.pendingConfirmation = null
                 InstallUpdates.clearSession(context)
                 InstallUpdates.publish(context, InstallUpdate(
-                    InstallPhase.SUCCESS, "Installation terminée",
-                    "L'application est installée sur ton appareil.",
+                    InstallPhase.SUCCESS, "Installée",
+                    "",
                     packageName = installedPkg
                 ))
             }
             else -> {
                 val isAborted = code == PackageInstaller.STATUS_FAILURE_ABORTED
-                val title = if (isAborted) "Installation annulée" else "Installation impossible"
+                val title = if (isAborted) "Installation annulée" else "Échec de l'installation"
                 val explanation = when (code) {
-                    PackageInstaller.STATUS_FAILURE_ABORTED ->
-                        "L'installation a été annulée. Tu peux relancer ce fichier ou en choisir un autre."
+                    PackageInstaller.STATUS_FAILURE_ABORTED -> ""
                     PackageInstaller.STATUS_FAILURE_BLOCKED ->
-                        "Android a bloqué l'installation. Vérifie les autorisations de source inconnue et la provenance du fichier."
+                        "Bloqué par Android. Vérifie l'autorisation de source inconnue."
                     PackageInstaller.STATUS_FAILURE_CONFLICT ->
-                        "Conflit de signature : une version incompatible est déjà présente sur l'appareil. Désinstalle l'ancienne version, puis réessaie."
+                        "Conflit de signature : désinstalle d'abord la version existante."
                     PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-                        "Ce fichier n'est pas compatible avec l'architecture de ton appareil."
+                        "Architecture incompatible avec cet appareil."
                     PackageInstaller.STATUS_FAILURE_INVALID ->
-                        "Le fichier semble incomplet, mal signé ou contient des modules incompatibles."
+                        "Fichier corrompu, mal signé ou incomplet."
                     PackageInstaller.STATUS_FAILURE_STORAGE ->
-                        "Stockage saturé : libère de l'espace sur l'appareil, puis réessaie."
-                    else -> "L'installation n'a pas abouti. Vérifie le fichier et réessaie."
+                        "Espace de stockage insuffisant."
+                    else -> "L'installation a échoué."
                 }
                 fail(context, title, explanation, diagnostic)
             }

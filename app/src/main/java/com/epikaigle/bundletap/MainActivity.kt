@@ -26,6 +26,8 @@ import com.epikaigle.bundletap.ui.BundleTapScreen
 class MainActivity : ComponentActivity() {
     private val installer: InstallerViewModel by viewModels()
     private var sourceAllowed by mutableStateOf(false)
+    private var isDragging by mutableStateOf(false)
+    private var resumeTick by mutableStateOf(0)
 
     private val picker = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -41,7 +43,7 @@ class MainActivity : ComponentActivity() {
         sourceAllowed = packageManager.canRequestPackageInstalls()
         setContent {
             val update by InstallUpdates.current.collectAsState()
-            val canOpenApp = androidx.compose.runtime.remember(update.packageName, update.phase) {
+            val canOpenApp = androidx.compose.runtime.remember(update.packageName, update.phase, resumeTick) {
                 update.packageName?.let { packageManager.getLaunchIntentForPackage(it) != null } ?: false
             }
             BundleTapScreen(
@@ -51,6 +53,7 @@ class MainActivity : ComponentActivity() {
                 canConfirm = InstallUpdates.pendingConfirmation != null,
                 canRetry = installer.retry() != null && update.phase == InstallPhase.ERROR,
                 canOpenApp = canOpenApp,
+                isDragging = isDragging,
                 onSelectFile = { picker.launch(arrayOf("*/*")) },
                 onEnableSource = ::openUnknownSourcesSettings,
                 onConfirm = ::launchPendingConfirmation,
@@ -69,10 +72,17 @@ class MainActivity : ComponentActivity() {
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> true
-                DragEvent.ACTION_DRAG_ENTERED,
-                DragEvent.ACTION_DRAG_LOCATION,
-                DragEvent.ACTION_DRAG_EXITED -> true
+                DragEvent.ACTION_DRAG_ENTERED -> {
+                    isDragging = true
+                    true
+                }
+                DragEvent.ACTION_DRAG_LOCATION -> true
+                DragEvent.ACTION_DRAG_EXITED -> {
+                    isDragging = false
+                    true
+                }
                 DragEvent.ACTION_DROP -> {
+                    isDragging = false
                     requestDragAndDropPermissions(event)
                     val dropUri = event.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
                     if (dropUri != null) {
@@ -82,7 +92,10 @@ class MainActivity : ComponentActivity() {
                         false
                     }
                 }
-                DragEvent.ACTION_DRAG_ENDED -> true
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    isDragging = false
+                    true
+                }
                 else -> false
             }
         }
@@ -97,6 +110,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         sourceAllowed = packageManager.canRequestPackageInstalls()
+        resumeTick++
         installer.onPermissionReturned()
         InstallUpdates.expireUnansweredSession(this)
     }
@@ -152,8 +166,8 @@ class MainActivity : ComponentActivity() {
                 if (!hasZipMagic) {
                     InstallUpdates.publish(this, InstallUpdate(
                         InstallPhase.ERROR,
-                        "Format non pris en charge",
-                        "Choisis un fichier APK, APKM, APKS, XAPK, APKX ou ZIP.",
+                        "Format non supporté",
+                        "APK, APKS, APKM, XAPK, APKX ou ZIP requis.",
                         fileName = fileName
                     ))
                     return

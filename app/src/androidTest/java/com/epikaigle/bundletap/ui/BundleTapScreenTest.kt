@@ -2,6 +2,7 @@ package com.epikaigle.bundletap.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.epikaigle.bundletap.install.InstallPhase
@@ -113,5 +114,24 @@ class BundleTapScreenTest {
         }
         compose.onNodeWithText("Annuler l'installation").assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(cancelled) }
+    }
+
+    @Test fun iconButtonsExposeAccessibleActions() {
+        var dismissed = false
+        compose.setContent {
+            BundleTapScreen(
+                update = InstallUpdate(
+                    InstallPhase.ERROR, "Échec de l'installation",
+                    "Fichier invalide.", "invalid.apks", "INSTALL_FAILED_INVALID_APK"
+                ),
+                busy = false, sourceAllowed = true, canConfirm = false, canRetry = true,
+                onSelectFile = {}, onEnableSource = {}, onConfirm = {},
+                onRetry = {}, onReset = { dismissed = true }
+            )
+        }
+        compose.onNodeWithText("Détails techniques").performClick()
+        compose.onNodeWithContentDescription("Copier les détails").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Fermer").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(dismissed) }
     }
 }

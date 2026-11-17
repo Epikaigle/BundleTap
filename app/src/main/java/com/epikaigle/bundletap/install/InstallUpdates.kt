@@ -33,7 +33,7 @@ object InstallUpdates {
     private const val STALE_AFTER_MS = 20L * 60 * 1000
 
     val current = MutableStateFlow(
-        InstallUpdate(InstallPhase.READY, "Prêt à installer", "Choisis un fichier pour commencer.")
+        InstallUpdate(InstallPhase.READY, "BundleTap", "")
     )
 
     @Volatile var pendingConfirmation: Intent? = null
@@ -92,7 +92,7 @@ object InstallUpdates {
             current.value = InstallUpdate(
                 InstallPhase.ERROR,
                 "Installation interrompue",
-                "Sélectionne à nouveau le fichier pour reprendre.",
+                "Sélectionne à nouveau le fichier.",
                 fileName = fileName,
                 packageName = pkgName,
                 splitCount = splits,
@@ -101,10 +101,20 @@ object InstallUpdates {
                 fileSizeBytes = sizeBytes
             )
         } else {
+            val restoredTitle = when (phase) {
+                InstallPhase.SUCCESS -> "Installée"
+                InstallPhase.FILE_SELECTED -> "Prêt"
+                else -> prefs.getString("title", "BundleTap") ?: "BundleTap"
+            }
+            val restoredMessage = if (phase == InstallPhase.SUCCESS || phase == InstallPhase.FILE_SELECTED) {
+                ""
+            } else {
+                prefs.getString("message", "") ?: ""
+            }
             current.value = InstallUpdate(
                 phase,
-                prefs.getString("title", "BundleTap") ?: "BundleTap",
-                prefs.getString("message", "") ?: "",
+                restoredTitle,
+                restoredMessage,
                 fileName,
                 prefs.getString("details", null),
                 packageName = pkgName,
@@ -126,8 +136,8 @@ object InstallUpdates {
         abandonCurrentSession(context)
         publish(context, InstallUpdate(
             InstallPhase.ERROR,
-            "Résultat non reçu",
-            "Android n’a pas renvoyé de résultat. Vérifie si l’application est installée avant de réessayer."
+            "Délai dépassé",
+            "Vérifie si l'application est déjà installée."
         ))
     }
 
@@ -160,7 +170,7 @@ object InstallUpdates {
     fun reset(context: Context) {
         abandonCurrentSession(context)
         publish(context, InstallUpdate(
-            InstallPhase.READY, "Prêt à installer", "Choisis un fichier pour commencer."
+            InstallPhase.READY, "BundleTap", ""
         ))
     }
 }

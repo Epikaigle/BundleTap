@@ -1,12 +1,22 @@
 package com.epikaigle.bundletap.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Bitmap
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -15,15 +25,44 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,14 +74,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.epikaigle.bundletap.BuildConfig
 import com.epikaigle.bundletap.R
 import com.epikaigle.bundletap.install.FileFormats
 import com.epikaigle.bundletap.install.InstallPhase
@@ -78,6 +116,7 @@ fun BundleTapScreen(
     canConfirm: Boolean,
     canRetry: Boolean,
     canOpenApp: Boolean = false,
+    isDragging: Boolean = false,
     onSelectFile: () -> Unit,
     onEnableSource: () -> Unit,
     onConfirm: () -> Unit,
@@ -113,134 +152,164 @@ fun BundleTapScreen(
             update.phase == InstallPhase.INSTALLING
 
         Surface(color = Background, modifier = Modifier.fillMaxSize()) {
-            Column(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             listOf(Color(0xFF0E2235), Background, Background)
                         )
-                    )
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ),
+                contentAlignment = Alignment.TopCenter
             ) {
-                BrandHeader()
+                val horizontalPadding = if (maxWidth < 360.dp) 14.dp else 20.dp
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = horizontalPadding, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    BrandHeader(
+                        sourceAllowed = sourceAllowed,
+                        onEnableSource = onEnableSource
+                    )
 
-                InstallStepTracker(phase = update.phase)
-
-                AnimatedContent(
-                    targetState = update.phase == InstallPhase.READY,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(220)) togetherWith
-                            fadeOut(animationSpec = tween(180))
-                    },
-                    label = "MainCardTransition"
-                ) { isReady ->
-                    if (isReady) {
-                        WelcomeCard(
-                            sourceAllowed = sourceAllowed,
-                            onSelectFile = onSelectFile,
-                            onEnableSource = onEnableSource
-                        )
-                    } else {
-                        InstallationCard(
-                            update = update,
-                            working = isWorking,
-                            canConfirm = canConfirm,
-                            canRetry = canRetry,
-                            canOpenApp = canOpenApp,
-                            sourceAllowed = sourceAllowed,
-                            onSelectFile = onSelectFile,
-                            onEnableSource = onEnableSource,
-                            onConfirm = onConfirm,
-                            onRetry = onRetry,
-                            onReset = onReset,
-                            onCancel = onCancel,
-                            onOpenApp = onOpenApp,
-                            onInstall = onInstall
-                        )
+                    AnimatedVisibility(visible = update.phase != InstallPhase.READY) {
+                        InstallStepTracker(phase = update.phase)
                     }
-                }
 
-                PrivacyAndSupport(
-                    sourceAllowed = sourceAllowed,
-                    showSettings = update.phase == InstallPhase.READY ||
-                        update.phase == InstallPhase.ERROR ||
-                        update.phase == InstallPhase.SUCCESS,
-                    onEnableSource = onEnableSource
-                )
-                Spacer(Modifier.height(8.dp))
+                    AnimatedContent(
+                        targetState = update.phase == InstallPhase.READY,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith
+                                fadeOut(animationSpec = tween(180))
+                        },
+                        label = "MainCardTransition"
+                    ) { isReady ->
+                        if (isReady) {
+                            WelcomeCard(
+                                sourceAllowed = sourceAllowed,
+                                isDragging = isDragging,
+                                onSelectFile = onSelectFile,
+                                onEnableSource = onEnableSource
+                            )
+                        } else {
+                            InstallationCard(
+                                update = update,
+                                working = isWorking,
+                                canConfirm = canConfirm,
+                                canRetry = canRetry,
+                                canOpenApp = canOpenApp,
+                                isDragging = isDragging,
+                                onSelectFile = onSelectFile,
+                                onEnableSource = onEnableSource,
+                                onConfirm = onConfirm,
+                                onRetry = onRetry,
+                                onReset = onReset,
+                                onCancel = onCancel,
+                                onOpenApp = onOpenApp,
+                                onInstall = onInstall
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "v${BuildConfig.VERSION_NAME}",
+                        color = Muted.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun BrandHeader() {
-    val deviceModel = remember {
-        val model = Build.MODEL.trim()
-        if (model.isNotBlank()) model.uppercase() else "PIXEL 7 PRO"
-    }
-
+private fun BrandHeader(
+    sourceAllowed: Boolean,
+    onEnableSource: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .size(42.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(Accent.copy(alpha = 0.14f))
-                .border(BorderStroke(1.dp, Accent.copy(alpha = 0.35f)), RoundedCornerShape(16.dp)),
+                .border(BorderStroke(1.dp, Accent.copy(alpha = 0.35f)), RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_bundle),
                 contentDescription = null,
                 tint = Accent,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        Column(Modifier.weight(1f)) {
-            Text(
-                "BundleTap",
-                color = White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.5).sp
-            )
-            Text(
-                "Installateur de bundles Android",
-                color = Subtle,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Elevated,
-            border = BorderStroke(1.dp, Border)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+        Text(
+            text = "BundleTap",
+            color = White,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.4).sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (sourceAllowed) {
+            Surface(
+                onClick = onEnableSource,
+                shape = RoundedCornerShape(14.dp),
+                color = Elevated,
+                border = BorderStroke(1.dp, Accent.copy(alpha = 0.35f)),
+                modifier = Modifier.size(42.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Accent)
-                )
-                Text(
-                    deviceModel,
-                    color = Accent,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_shield),
+                        contentDescription = "Sources inconnues autorisées",
+                        tint = Accent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        } else {
+            Surface(
+                onClick = onEnableSource,
+                shape = RoundedCornerShape(14.dp),
+                color = WarningContainer.copy(alpha = 0.7f),
+                border = BorderStroke(1.dp, Warning.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_shield),
+                        contentDescription = null,
+                        tint = Warning,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Autoriser",
+                        color = Warning,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -254,10 +323,15 @@ private fun InstallStepTracker(phase: InstallPhase) {
         InstallPhase.INSTALLING, InstallPhase.AWAITING_CONFIRMATION -> 2
         InstallPhase.SUCCESS, InstallPhase.ERROR -> 3
     }
-    val steps = listOf("Fichier", "Analyse", "Validation", "Résultat")
+    val stepIcons = listOf(
+        R.drawable.ic_folder to "Sélection",
+        R.drawable.ic_bundle to "Préparation",
+        R.drawable.ic_shield to "Validation",
+        (if (phase == InstallPhase.ERROR) R.drawable.ic_alert else R.drawable.ic_done) to "Résultat"
+    )
 
     Surface(
-        color = Panel.copy(alpha = 0.7f),
+        color = Panel.copy(alpha = 0.75f),
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, BorderSubtle),
         modifier = Modifier.fillMaxWidth()
@@ -266,68 +340,64 @@ private fun InstallStepTracker(phase: InstallPhase) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            steps.forEachIndexed { index, title ->
+            stepIcons.forEachIndexed { index, (iconRes, label) ->
                 val isActive = index == currentStep
-                val isDone = index < currentStep
-                val stepColor by animateColorAsState(
-                    targetValue = when {
-                        isActive -> Accent
-                        isDone -> Accent.copy(alpha = 0.8f)
-                        else -> Muted.copy(alpha = 0.6f)
-                    },
-                    label = "StepColor"
-                )
+                val isDone = index < currentStep || (index == 3 && phase == InstallPhase.SUCCESS)
+                val isErrorStep = index == 3 && phase == InstallPhase.ERROR
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                val containerColor by animateColorAsState(
+                    targetValue = when {
+                        isErrorStep -> ErrorContainer
+                        isActive && !isDone -> Accent
+                        isDone -> Accent.copy(alpha = 0.2f)
+                        else -> Elevated
+                    },
+                    label = "StepContainerColor"
+                )
+                val borderColor by animateColorAsState(
+                    targetValue = when {
+                        isErrorStep -> Error
+                        isActive || isDone -> Accent
+                        else -> Border
+                    },
+                    label = "StepBorderColor"
+                )
+                val iconTint = when {
+                    isErrorStep -> Error
+                    isActive && !isDone -> AccentDark
+                    isDone -> Accent
+                    else -> Muted
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(containerColor)
+                        .border(BorderStroke(1.dp, borderColor), CircleShape),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isActive) Accent else if (isDone) Accent.copy(alpha = 0.2f) else Elevated
-                            )
-                            .border(
-                                BorderStroke(1.dp, if (isActive || isDone) Accent else Border),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isDone) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_done),
-                                contentDescription = null,
-                                tint = Accent,
-                                modifier = Modifier.size(11.dp)
-                            )
-                        } else {
-                            Text(
-                                "${index + 1}",
-                                color = if (isActive) AccentDark else Subtle,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    Text(
-                        title,
-                        color = stepColor,
-                        fontSize = 11.sp,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                    Icon(
+                        painter = painterResource(if (isDone) R.drawable.ic_done else iconRes),
+                        contentDescription = label,
+                        tint = iconTint,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
 
-                if (index < steps.lastIndex) {
+                if (index < stepIcons.lastIndex) {
                     Box(
                         modifier = Modifier
-                            .width(14.dp)
-                            .height(1.dp)
-                            .background(if (index < currentStep) Accent.copy(alpha = 0.5f) else BorderSubtle)
+                            .weight(1f)
+                            .padding(horizontal = 6.dp)
+                            .height(2.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index < currentStep) Accent.copy(alpha = 0.55f)
+                                else BorderSubtle
+                            )
                     )
                 }
             }
@@ -335,36 +405,34 @@ private fun InstallStepTracker(phase: InstallPhase) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WelcomeCard(
     sourceAllowed: Boolean,
+    isDragging: Boolean,
     onSelectFile: () -> Unit,
     onEnableSource: () -> Unit
 ) {
-    var selectedFormatInfo by remember { mutableStateOf<String?>(null) }
-    val formats = listOf(
-        "APK" to "Application standard unique",
-        "APKS" to "Archive split APKs (bundletool / SAI)",
-        "APKM" to "Bundle APKMirror avec splits (ABI, langue, densité)",
-        "XAPK" to "Package complet APKPure avec base et splits",
-        "APKX" to "Format de bundle APK alternatif",
-        "ZIP" to "Archive compressée contenant un ou des APK"
-    )
+    val formats = listOf("APK", "APKS", "APKM", "XAPK", "APKX", "ZIP")
 
     Surface(
         color = Panel,
         shape = RoundedCornerShape(26.dp),
-        border = BorderStroke(1.dp, Border)
+        border = BorderStroke(
+            width = if (isDragging) 2.dp else 1.dp,
+            color = if (isDragging) Accent else Border
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(22.dp),
-            horizontalAlignment = Alignment.Start
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Box(
-                Modifier
-                    .size(68.dp)
+                modifier = Modifier
+                    .size(72.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(Accent.copy(alpha = 0.12f))
                     .border(BorderStroke(1.dp, Accent.copy(alpha = 0.3f)), RoundedCornerShape(22.dp)),
@@ -374,72 +442,16 @@ private fun WelcomeCard(
                     painter = painterResource(R.drawable.ic_bundle),
                     contentDescription = null,
                     tint = Accent,
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(36.dp)
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
-            Text(
-                "Un fichier.\nUne installation.",
-                color = White,
-                fontSize = 28.sp,
-                lineHeight = 34.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Sélectionne un APK ou un bundle (APK, APKS, APKM, XAPK, APKX, ZIP). BundleTap extrait et installe uniquement les composants adaptés à ton appareil.",
-                color = Subtle,
-                style = MaterialTheme.typography.bodyMedium,
-                lineHeight = 22.sp
-            )
-
             if (!sourceAllowed) {
-                Spacer(Modifier.height(16.dp))
                 Surface(
+                    onClick = onEnableSource,
                     color = WarningContainer.copy(alpha = 0.45f),
                     shape = RoundedCornerShape(16.dp),
                     border = BorderStroke(1.dp, Warning.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_shield),
-                            contentDescription = null,
-                            tint = Warning,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Autorisation requise",
-                                color = White,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                "Active l'installation de sources inconnues pour continuer.",
-                                color = Subtle,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        TextButton(
-                            onClick = onEnableSource,
-                            colors = ButtonDefaults.textButtonColors(contentColor = Warning)
-                        ) {
-                            Text("Activer", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            } else {
-                Spacer(Modifier.height(14.dp))
-                Surface(
-                    color = Elevated.copy(alpha = 0.8f),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, Accent.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -447,38 +459,31 @@ private fun WelcomeCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Accent.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
+                        Icon(
+                            painter = painterResource(R.drawable.ic_shield),
+                            contentDescription = null,
+                            tint = Warning,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Sources inconnues désactivées",
+                            color = White,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = onEnableSource,
+                            colors = ButtonDefaults.textButtonColors(contentColor = Warning)
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_done),
-                                contentDescription = null,
-                                tint = Accent,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Autorisation d'installation : Accordée",
-                                color = White,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                "BundleTap peut installer tous vos APK et bundles.",
-                                color = Subtle,
-                                fontSize = 11.sp
-                            )
+                            Text("Activer", fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
             PrimaryAction(
                 text = "Sélectionner un fichier",
                 onClick = onSelectFile,
@@ -486,58 +491,24 @@ private fun WelcomeCard(
                 icon = R.drawable.ic_folder
             )
 
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "Formats compatibles :",
-                color = Muted,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                formats.forEach { (fmt, desc) ->
-                    val isSelected = selectedFormatInfo == fmt
+                formats.forEach { fmt ->
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (isSelected) Accent.copy(alpha = 0.2f) else Elevated,
-                        border = BorderStroke(1.dp, if (isSelected) Accent else BorderSubtle),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                selectedFormatInfo = if (isSelected) null else fmt
-                            }
-                    ) {
-                        Text(
-                            fmt,
-                            color = if (isSelected) Accent else Subtle,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = selectedFormatInfo != null) {
-                selectedFormatInfo?.let { fmt ->
-                    val desc = formats.firstOrNull { it.first == fmt }?.second ?: ""
-                    Surface(
+                        shape = RoundedCornerShape(8.dp),
                         color = Elevated,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, BorderSubtle),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp)
+                        border = BorderStroke(1.dp, BorderSubtle)
                     ) {
                         Text(
-                            desc,
+                            text = fmt,
                             color = Subtle,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
                 }
@@ -547,7 +518,7 @@ private fun WelcomeCard(
 }
 
 @Composable
-private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.Bitmap? = null) {
+private fun InstallingAnimation(phase: InstallPhase, appIcon: Bitmap? = null) {
     val infiniteTransition = rememberInfiniteTransition(label = "InstallingInfinite")
 
     val pulseScale by infiniteTransition.animateFloat(
@@ -583,17 +554,17 @@ private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.B
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 14.dp),
+            .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
-            modifier = Modifier.size(112.dp),
+            modifier = Modifier.size(104.dp),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(98.dp)
+                    .size(92.dp)
                     .scale(pulseScale)
                     .clip(CircleShape)
                     .background(Accent.copy(alpha = glowAlpha * 0.35f))
@@ -601,7 +572,7 @@ private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.B
 
             Canvas(
                 modifier = Modifier
-                    .size(90.dp)
+                    .size(84.dp)
                     .graphicsLayer(rotationZ = rotation)
             ) {
                 drawArc(
@@ -621,7 +592,7 @@ private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.B
 
             Box(
                 modifier = Modifier
-                    .size(62.dp)
+                    .size(60.dp)
                     .clip(CircleShape)
                     .background(Elevated)
                     .border(BorderStroke(1.5.dp, Accent.copy(alpha = 0.6f)), CircleShape),
@@ -632,7 +603,7 @@ private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.B
                         bitmap = appIcon.asImageBitmap(),
                         contentDescription = null,
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .scale(pulseScale)
                     )
@@ -642,45 +613,127 @@ private fun InstallingAnimation(phase: InstallPhase, appIcon: android.graphics.B
                         contentDescription = null,
                         tint = Accent,
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(28.dp)
                             .scale(pulseScale)
                     )
                 }
             }
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = if (phase == InstallPhase.PREPARING)
-                    "Analyse & préparation en cours…"
-                else
-                    "Installation en cours…",
-                color = White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
-            )
-            Text(
-                text = if (phase == InstallPhase.PREPARING)
-                    "Extraction des modules compatibles avec ton appareil"
-                else
-                    "Communication avec le gestionnaire de paquets Android",
-                color = Subtle,
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center
-            )
-        }
+        Text(
+            text = if (phase == InstallPhase.PREPARING) "Préparation…" else "Installation…",
+            color = White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
-        LinearProgressIndicator(
+@Composable
+private fun FileSummaryPill(update: InstallUpdate) {
+    val name = update.fileName ?: return
+    Surface(
+        color = Elevated,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, BorderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
-            color = Accent,
-            trackColor = Elevated
-        )
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val formatTag = FileFormats.formatOf(name)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Accent.copy(alpha = 0.16f),
+                border = BorderStroke(1.dp, Accent.copy(alpha = 0.35f))
+            ) {
+                Text(
+                    text = formatTag,
+                    color = Accent,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                if (update.appLabel != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = update.appLabel,
+                            color = White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        update.appVersion?.let { ver ->
+                            Surface(
+                                color = Panel,
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, Border)
+                            ) {
+                                Text(
+                                    text = "v$ver",
+                                    color = Subtle,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = name,
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        text = name,
+                        color = White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                val sizeText = update.fileSizeBytes?.let { FileFormats.formatFileSize(it) }
+                    ?.takeIf { it.isNotBlank() }
+                val splitText = if (update.splitCount != null && update.splitCount > 1) {
+                    "${update.splitCount} modules"
+                } else null
+                val metaText = listOfNotNull(sizeText, splitText).joinToString(" • ")
+                if (metaText.isNotEmpty()) {
+                    Text(
+                        text = metaText,
+                        color = Accent,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -691,7 +744,7 @@ private fun InstallationCard(
     canConfirm: Boolean,
     canRetry: Boolean,
     canOpenApp: Boolean,
-    sourceAllowed: Boolean,
+    isDragging: Boolean,
     onSelectFile: () -> Unit,
     onEnableSource: () -> Unit,
     onConfirm: () -> Unit,
@@ -699,7 +752,7 @@ private fun InstallationCard(
     onReset: () -> Unit,
     onCancel: () -> Unit,
     onOpenApp: (String) -> Unit,
-    onInstall: () -> Unit = {}
+    onInstall: () -> Unit
 ) {
     val failed = update.phase == InstallPhase.ERROR
     val complete = update.phase == InstallPhase.SUCCESS
@@ -707,13 +760,15 @@ private fun InstallationCard(
     val tint = when {
         isCancelled -> Warning
         failed -> Error
-        complete -> Accent
         else -> Accent
     }
+    val canDismiss = update.phase in setOf(
+        InstallPhase.FILE_SELECTED,
+        InstallPhase.SUCCESS,
+        InstallPhase.ERROR
+    )
 
     var expanded by rememberSaveable(update.details) { mutableStateOf(false) }
-    @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
@@ -721,8 +776,9 @@ private fun InstallationCard(
         color = Panel,
         shape = RoundedCornerShape(26.dp),
         border = BorderStroke(
-            1.dp,
-            when {
+            width = if (isDragging) 2.dp else 1.dp,
+            color = when {
+                isDragging -> Accent
                 isCancelled -> Warning.copy(alpha = 0.45f)
                 failed -> Error.copy(alpha = 0.45f)
                 complete -> Accent.copy(alpha = 0.45f)
@@ -734,393 +790,298 @@ private fun InstallationCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(22.dp)
+                .padding(20.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                if (update.appIcon != null && !failed && !isCancelled) {
-                    Image(
-                        bitmap = update.appIcon.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .border(BorderStroke(1.dp, tint.copy(alpha = 0.35f)), RoundedCornerShape(18.dp))
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(tint.copy(alpha = 0.12f))
-                            .border(BorderStroke(1.dp, tint.copy(alpha = 0.35f)), RoundedCornerShape(18.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(
-                                when {
-                                    isCancelled -> R.drawable.ic_alert
-                                    failed -> R.drawable.ic_alert
-                                    complete -> R.drawable.ic_done
-                                    update.phase == InstallPhase.NEEDS_PERMISSION -> R.drawable.ic_shield
-                                    else -> R.drawable.ic_bundle
-                                }
-                            ),
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        update.title,
-                        color = White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (working) {
-                        Text(
-                            if (update.phase == InstallPhase.PREPARING)
-                                "Analyse et extraction des modules"
-                            else
-                                "Transmission à Android PackageInstaller",
-                            color = Accent,
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Text(
-                update.message,
-                color = Subtle,
-                style = MaterialTheme.typography.bodyMedium,
-                lineHeight = 22.sp
-            )
-
-            update.fileName?.let { name ->
-                Spacer(Modifier.height(18.dp))
-                Surface(
-                    color = Elevated,
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, BorderSubtle)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        val formatTag = FileFormats.formatOf(name)
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Accent.copy(alpha = 0.16f),
-                            border = BorderStroke(1.dp, Accent.copy(alpha = 0.35f))
-                        ) {
-                            Text(
-                                formatTag,
-                                color = Accent,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
-                            )
-                        }
-
-                        Column(Modifier.weight(1f)) {
-                            if (update.appLabel != null) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        update.appLabel,
-                                        color = White,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    update.appVersion?.let { ver ->
-                                        Surface(
-                                            color = Elevated,
-                                            shape = RoundedCornerShape(6.dp),
-                                            border = BorderStroke(1.dp, Border)
-                                        ) {
-                                            Text(
-                                                "v$ver",
-                                                color = Subtle,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    name,
-                                    color = Muted,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            } else {
-                                Text(
-                                    "Fichier sélectionné",
-                                    color = Muted,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                                Text(
-                                    name,
-                                    color = White,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            val sizeText = update.fileSizeBytes?.let { FileFormats.formatFileSize(it) }
-                            val splitText = if (update.splitCount != null && update.splitCount > 1) {
-                                "Base + ${update.splitCount - 1} splits configurés"
-                            } else null
-                            val metaText = listOfNotNull(sizeText, splitText).joinToString(" • ")
-                            if (metaText.isNotEmpty()) {
-                                Text(
-                                    metaText,
-                                    color = Accent,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(top = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
             if (working) {
-                Spacer(Modifier.height(18.dp))
                 InstallingAnimation(phase = update.phase, appIcon = update.appIcon)
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(
+                if (update.fileName != null) {
+                    Spacer(Modifier.height(12.dp))
+                    FileSummaryPill(update)
+                }
+                Spacer(Modifier.height(16.dp))
+                SecondaryAction(
+                    text = "Annuler",
                     onClick = onCancel,
-                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, BorderSubtle)
+                    icon = R.drawable.ic_close
+                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        "Annuler l'installation",
-                        color = Subtle,
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
-
-            when (update.phase) {
-                InstallPhase.FILE_SELECTED -> {
-                    Spacer(Modifier.height(22.dp))
-                    if (!sourceAllowed) {
-                        Surface(
-                            color = WarningContainer.copy(alpha = 0.45f),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, Warning.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_shield),
-                                    contentDescription = null,
-                                    tint = Warning,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Autorisation requise",
-                                        color = White,
-                                        fontWeight = FontWeight.SemiBold,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Text(
-                                        "Active les sources inconnues pour installer cette application.",
-                                        color = Subtle,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                TextButton(
-                                    onClick = onEnableSource,
-                                    colors = ButtonDefaults.textButtonColors(contentColor = Warning)
-                                ) {
-                                    Text("Activer", fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(14.dp))
-                    }
-                    PrimaryAction(
-                        text = "Installer",
-                        onClick = onInstall,
-                        icon = R.drawable.ic_install
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SecondaryAction("Choisir un autre fichier", onSelectFile)
-                    Spacer(Modifier.height(4.dp))
-                    TertiaryAction("Annuler", onReset)
-                }
-
-                InstallPhase.NEEDS_PERMISSION -> {
-                    Spacer(Modifier.height(24.dp))
-                    PrimaryAction("Autoriser l'installation", onEnableSource, icon = R.drawable.ic_shield)
-                    Spacer(Modifier.height(10.dp))
-                    SecondaryAction("Annuler", onReset)
-                }
-
-                InstallPhase.AWAITING_CONFIRMATION -> {
-                    Spacer(Modifier.height(20.dp))
-                    Surface(
-                        color = Elevated,
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, BorderSubtle)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_shield),
+                    if (update.appIcon != null && !failed && !isCancelled) {
+                        Box(modifier = Modifier.size(52.dp)) {
+                            Image(
+                                bitmap = update.appIcon.asImageBitmap(),
                                 contentDescription = null,
-                                tint = Accent,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .border(
+                                        BorderStroke(1.dp, tint.copy(alpha = 0.35f)),
+                                        RoundedCornerShape(16.dp)
+                                    )
                             )
-                            Text(
-                                "La boîte de dialogue système Android nécessite ta validation pour installer l'application.",
-                                color = Subtle,
-                                style = MaterialTheme.typography.bodySmall,
-                                lineHeight = 18.sp
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(20.dp))
-                    if (canConfirm) {
-                        PrimaryAction("Confirmer dans Android", onConfirm)
-                        Spacer(Modifier.height(10.dp))
-                        SecondaryAction("Annuler l'installation", onReset)
-                    } else {
-                        Text(
-                            "Si aucune fenêtre ne s'affiche, ouvre à nouveau ce fichier.",
-                            color = Subtle,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        SecondaryAction("Annuler l'installation", onReset)
-                    }
-                }
-
-                InstallPhase.ERROR -> {
-                    Spacer(Modifier.height(24.dp))
-                    PrimaryAction("Choisir un autre fichier", onSelectFile, icon = R.drawable.ic_folder)
-                    if (canRetry) {
-                        Spacer(Modifier.height(10.dp))
-                        SecondaryAction("Réessayer ce fichier", onRetry)
-                    }
-
-                    if (!update.details.isNullOrBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(
-                                onClick = { expanded = !expanded },
-                                modifier = Modifier.defaultMinSize(minHeight = 48.dp)
-                            ) {
-                                Text(if (expanded) "Masquer les détails" else "Détails techniques")
-                            }
-
-                            if (expanded) {
-                                TextButton(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(update.details))
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        Toast.makeText(
-                                            context,
-                                            "Détails copiés dans le presse-papiers",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                            if (complete) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .align(Alignment.BottomEnd)
+                                        .clip(CircleShape)
+                                        .background(Accent)
+                                        .border(BorderStroke(1.5.dp, Panel), CircleShape),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.ic_copy),
+                                        painter = painterResource(R.drawable.ic_done),
                                         contentDescription = null,
-                                        tint = Accent,
-                                        modifier = Modifier.size(16.dp)
+                                        tint = AccentDark,
+                                        modifier = Modifier.size(13.dp)
                                     )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Copier", color = Accent, style = MaterialTheme.typography.labelMedium)
                                 }
                             }
                         }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(tint.copy(alpha = 0.12f))
+                                .border(
+                                    BorderStroke(1.dp, tint.copy(alpha = 0.35f)),
+                                    RoundedCornerShape(16.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    when {
+                                        isCancelled || failed -> R.drawable.ic_alert
+                                        complete -> R.drawable.ic_done
+                                        update.phase == InstallPhase.NEEDS_PERMISSION -> R.drawable.ic_shield
+                                        else -> R.drawable.ic_bundle
+                                    }
+                                ),
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
 
-                        AnimatedVisibility(visible = expanded) {
-                            Surface(
-                                color = Elevated,
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, BorderSubtle),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp, bottom = 8.dp)
+                    Text(
+                        text = update.title,
+                        color = White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (canDismiss) {
+                        IconButton(onClick = onReset) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "Fermer",
+                                tint = Subtle,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (update.message.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = update.message,
+                        color = Subtle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 20.sp
+                    )
+                }
+
+                if (update.fileName != null) {
+                    Spacer(Modifier.height(16.dp))
+                    FileSummaryPill(update)
+                }
+
+                when (update.phase) {
+                    InstallPhase.FILE_SELECTED -> {
+                        Spacer(Modifier.height(18.dp))
+                        PrimaryAction(
+                            text = "Installer",
+                            onClick = onInstall,
+                            icon = R.drawable.ic_install
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        SecondaryAction(
+                            text = "Autre fichier",
+                            onClick = onSelectFile,
+                            icon = R.drawable.ic_folder
+                        )
+                    }
+
+                    InstallPhase.NEEDS_PERMISSION -> {
+                        Spacer(Modifier.height(18.dp))
+                        PrimaryAction(
+                            text = "Autoriser l'installation",
+                            onClick = onEnableSource,
+                            icon = R.drawable.ic_shield
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        SecondaryAction(
+                            text = "Annuler",
+                            onClick = onReset,
+                            icon = R.drawable.ic_close
+                        )
+                    }
+
+                    InstallPhase.AWAITING_CONFIRMATION -> {
+                        Spacer(Modifier.height(18.dp))
+                        if (canConfirm) {
+                            PrimaryAction(
+                                text = "Confirmer dans Android",
+                                onClick = onConfirm,
+                                icon = R.drawable.ic_shield
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            SecondaryAction(
+                                text = "Annuler l'installation",
+                                onClick = onReset,
+                                icon = R.drawable.ic_close
+                            )
+                        } else {
+                            Text(
+                                text = "Aucune fenêtre système détectée.",
+                                color = Subtle,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            SecondaryAction(
+                                text = "Annuler l'installation",
+                                onClick = onReset,
+                                icon = R.drawable.ic_close
+                            )
+                        }
+                    }
+
+                    InstallPhase.ERROR -> {
+                        Spacer(Modifier.height(18.dp))
+                        if (canRetry) {
+                            PrimaryAction(
+                                text = "Réessayer",
+                                onClick = onRetry,
+                                icon = R.drawable.ic_refresh
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            SecondaryAction(
+                                text = "Autre fichier",
+                                onClick = onSelectFile,
+                                icon = R.drawable.ic_folder
+                            )
+                        } else {
+                            PrimaryAction(
+                                text = "Sélectionner un fichier",
+                                onClick = onSelectFile,
+                                icon = R.drawable.ic_folder
+                            )
+                        }
+
+                        if (!update.details.isNullOrBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    update.details,
-                                    color = Subtle,
-                                    fontSize = 12.sp,
-                                    lineHeight = 18.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.padding(14.dp)
-                                )
+                                TextButton(
+                                    onClick = { expanded = !expanded },
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp)
+                                ) {
+                                    Text(if (expanded) "Masquer" else "Détails techniques")
+                                }
+
+                                if (expanded) {
+                                    IconButton(
+                                        onClick = {
+                                            copyToClipboard(context, update.details)
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Copié",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_copy),
+                                            contentDescription = "Copier les détails",
+                                            tint = Accent,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            AnimatedVisibility(visible = expanded) {
+                                Surface(
+                                    color = Elevated,
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, BorderSubtle),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp)
+                                ) {
+                                    Text(
+                                        text = update.details,
+                                        color = Subtle,
+                                        fontSize = 12.sp,
+                                        lineHeight = 18.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(14.dp)
+                                    )
+                                }
                             }
                         }
                     }
 
-                    Spacer(Modifier.height(6.dp))
-                    TertiaryAction("Effacer le résultat", onReset)
-                }
-
-                InstallPhase.SUCCESS -> {
-                    Spacer(Modifier.height(24.dp))
-                    if (canOpenApp && !update.packageName.isNullOrBlank()) {
-                        PrimaryAction(
-                            text = "Ouvrir l'application",
-                            onClick = { onOpenApp(update.packageName) },
-                            icon = R.drawable.ic_launch
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        SecondaryAction("Installer un autre fichier", onSelectFile)
-                        Spacer(Modifier.height(4.dp))
-                        TertiaryAction("Retour à l'accueil", onReset)
-                    } else {
-                        PrimaryAction("Installer un autre fichier", onSelectFile, icon = R.drawable.ic_folder)
-                        Spacer(Modifier.height(10.dp))
-                        SecondaryAction("Retour à l'accueil", onReset)
+                    InstallPhase.SUCCESS -> {
+                        Spacer(Modifier.height(18.dp))
+                        if (canOpenApp && !update.packageName.isNullOrBlank()) {
+                            PrimaryAction(
+                                text = "Ouvrir l'application",
+                                onClick = { onOpenApp(update.packageName) },
+                                icon = R.drawable.ic_launch
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            SecondaryAction(
+                                text = "Autre fichier",
+                                onClick = onSelectFile,
+                                icon = R.drawable.ic_folder
+                            )
+                        } else {
+                            PrimaryAction(
+                                text = "Autre fichier",
+                                onClick = onSelectFile,
+                                icon = R.drawable.ic_folder
+                            )
+                        }
                     }
-                }
 
-                else -> Unit
+                    else -> Unit
+                }
             }
         }
     }
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+    val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    manager.setPrimaryClip(ClipData.newPlainText("BundleTap", text))
 }
 
 @Composable
@@ -1140,7 +1101,7 @@ private fun PrimaryAction(
         enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 56.dp),
+            .defaultMinSize(minHeight = 54.dp),
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Accent,
@@ -1163,9 +1124,11 @@ private fun PrimaryAction(
                 Spacer(Modifier.width(10.dp))
             }
             Text(
-                text,
+                text = text,
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(vertical = 4.dp),
                 textAlign = TextAlign.Center
             )
@@ -1174,7 +1137,11 @@ private fun PrimaryAction(
 }
 
 @Composable
-private fun SecondaryAction(text: String, onClick: () -> Unit) {
+private fun SecondaryAction(
+    text: String,
+    onClick: () -> Unit,
+    icon: Int? = null
+) {
     val haptic = LocalHapticFeedback.current
 
     OutlinedButton(
@@ -1184,128 +1151,40 @@ private fun SecondaryAction(text: String, onClick: () -> Unit) {
         },
         modifier = Modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 50.dp),
+            .defaultMinSize(minHeight = 48.dp),
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, Border)
     ) {
-        Text(
-            text,
-            color = Accent,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.labelLarge
-        )
-    }
-}
-
-@Composable
-private fun TertiaryAction(text: String, onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 44.dp)
-    ) {
-        Text(
-            text,
-            color = Subtle,
-            style = MaterialTheme.typography.labelMedium
-        )
-    }
-}
-
-@Composable
-private fun PrivacyAndSupport(
-    sourceAllowed: Boolean,
-    showSettings: Boolean,
-    onEnableSource: () -> Unit
-) {
-    val versionName = remember {
-        com.epikaigle.bundletap.BuildConfig.VERSION_NAME
-    }
-    val abi = remember { Build.SUPPORTED_ABIS.firstOrNull() ?: "ARM64" }
-
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Surface(
-            color = Panel.copy(alpha = 0.6f),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, BorderSubtle)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Accent.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_shield),
-                        contentDescription = null,
-                        tint = Accent,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "Une installation contrôlée",
-                        color = White,
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Traitement 100 % local. Aucun compte, aucune connexion réseau. Android demande ton accord avant chaque installation.",
-                        color = Subtle,
-                        style = MaterialTheme.typography.bodySmall,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-        }
-
-        if (showSettings) {
-            OutlinedButton(
-                onClick = onEnableSource,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = 48.dp),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Border)
-            ) {
+            if (icon != null) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_shield),
+                    painter = painterResource(icon),
                     contentDescription = null,
-                    tint = if (sourceAllowed) Accent else Warning,
+                    tint = Accent,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    if (sourceAllowed) "Gérer l'autorisation Android" else "Autoriser BundleTap dans les paramètres",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (sourceAllowed) Subtle else Warning
-                )
             }
+            Text(
+                text = text,
+                color = Accent,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-
-        Text(
-            "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})  ·  $abi  ·  v$versionName",
-            color = Muted,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
-        )
     }
 }
 
-@Preview(name = "Accueil avec autorisation", showBackground = true, widthDp = 412, heightDp = 892)
+@Preview(name = "Accueil", showBackground = true, widthDp = 412, heightDp = 892)
 @Composable
 private fun WelcomePreview() {
     BundleTapScreen(
-        update = InstallUpdate(InstallPhase.READY, "Prêt à installer", "Choisis un fichier pour commencer."),
+        update = InstallUpdate(InstallPhase.READY, "BundleTap", ""),
         busy = false,
         sourceAllowed = true,
         canConfirm = false,
@@ -1318,11 +1197,20 @@ private fun WelcomePreview() {
     )
 }
 
-@Preview(name = "Accueil sans autorisation", showBackground = true, widthDp = 412, heightDp = 892)
+@Preview(name = "Split-screen étroit (320dp)", showBackground = true, widthDp = 320, heightDp = 640)
 @Composable
-private fun WelcomeNoPermissionPreview() {
+private fun NarrowSplitPreview() {
     BundleTapScreen(
-        update = InstallUpdate(InstallPhase.READY, "Prêt à installer", "Choisis un fichier pour commencer."),
+        update = InstallUpdate(
+            InstallPhase.FILE_SELECTED,
+            "Prêt",
+            "",
+            fileName = "Mon.Application.Ultra.Longue_v8.9.10-arm64.xapk",
+            appLabel = "Application avec un nom très long",
+            appVersion = "8.9.10-release",
+            fileSizeBytes = 78_500_000L,
+            splitCount = 4
+        ),
         busy = false,
         sourceAllowed = false,
         canConfirm = false,
@@ -1335,15 +1223,16 @@ private fun WelcomeNoPermissionPreview() {
     )
 }
 
-@Preview(name = "Préparation et analyse", showBackground = true, widthDp = 412, heightDp = 892)
+@Preview(name = "Préparation", showBackground = true, widthDp = 412, heightDp = 892)
 @Composable
 private fun PreparingPreview() {
     BundleTapScreen(
         update = InstallUpdate(
             InstallPhase.PREPARING,
-            "Préparation du fichier",
-            "Analyse et sélection des modules compatibles avec ton appareil.",
+            "Préparation…",
+            "",
             fileName = "spotify-arm64-v8a.apkm",
+            fileSizeBytes = 45_200_000L,
             splitCount = 4,
             appLabel = "Spotify",
             appVersion = "8.9.10"
@@ -1360,41 +1249,19 @@ private fun PreparingPreview() {
     )
 }
 
-@Preview(name = "Confirmation requise", showBackground = true, widthDp = 412, heightDp = 892)
-@Composable
-private fun ConfirmationPreview() {
-    BundleTapScreen(
-        update = InstallUpdate(
-            InstallPhase.AWAITING_CONFIRMATION,
-            "Confirmation requise",
-            "Valide l'installation dans la fenêtre de sécurité Android.",
-            fileName = "example.apks",
-            splitCount = 3
-        ),
-        busy = false,
-        sourceAllowed = true,
-        canConfirm = true,
-        canRetry = false,
-        onSelectFile = {},
-        onEnableSource = {},
-        onConfirm = {},
-        onRetry = {},
-        onReset = {}
-    )
-}
-
-@Preview(name = "Succès avec ouverture", showBackground = true, widthDp = 412, heightDp = 892)
+@Preview(name = "Succès", showBackground = true, widthDp = 412, heightDp = 892)
 @Composable
 private fun SuccessPreview() {
     BundleTapScreen(
         update = InstallUpdate(
             InstallPhase.SUCCESS,
-            "Installation terminée",
-            "L'application est installée sur ton appareil.",
+            "Installée",
+            "",
             fileName = "app-release.xapk",
             packageName = "com.example.app",
             appLabel = "Exemple App",
-            appVersion = "1.0.0"
+            appVersion = "1.0.0",
+            fileSizeBytes = 12_300_000L
         ),
         busy = false,
         sourceAllowed = true,
@@ -1409,14 +1276,14 @@ private fun SuccessPreview() {
     )
 }
 
-@Preview(name = "Erreur avec détails techniques", showBackground = true, widthDp = 412, heightDp = 892)
+@Preview(name = "Erreur", showBackground = true, widthDp = 412, heightDp = 892)
 @Composable
 private fun ErrorPreview() {
     BundleTapScreen(
         update = InstallUpdate(
             InstallPhase.ERROR,
-            "Installation impossible",
-            "Le fichier est incomplet ou ses modules ne sont pas compatibles.",
+            "Échec de l'installation",
+            "Fichier corrompu, mal signé ou incomplet.",
             fileName = "example-release-arm64.apkm",
             details = "INSTALL_FAILED_INVALID_APK: Failed to parse /data/app/vmdl12345.tmp/base.apk"
         ),
@@ -1431,52 +1298,3 @@ private fun ErrorPreview() {
         onReset = {}
     )
 }
-
-@Preview(name = "Installation annulée", showBackground = true, widthDp = 412, heightDp = 892)
-@Composable
-private fun CancelledPreview() {
-    BundleTapScreen(
-        update = InstallUpdate(
-            InstallPhase.ERROR,
-            "Installation annulée",
-            "L'installation a été interrompue. Tu peux relancer ce fichier ou en choisir un autre.",
-            fileName = "example-release-arm64.apkm"
-        ),
-        busy = false,
-        sourceAllowed = true,
-        canConfirm = false,
-        canRetry = true,
-        onSelectFile = {},
-        onEnableSource = {},
-        onConfirm = {},
-        onRetry = {},
-        onReset = {}
-    )
-}
-
-@Preview(name = "Fichier sélectionné prêt à installer", showBackground = true, widthDp = 412, heightDp = 892)
-@Composable
-private fun FileSelectedPreview() {
-    BundleTapScreen(
-        update = InstallUpdate(
-            InstallPhase.FILE_SELECTED,
-            "Fichier prêt",
-            "Clique sur « Installer » pour lancer l'installation sur ton appareil.",
-            fileName = "Spotify_v8.9.10.xapk",
-            appLabel = "Spotify",
-            appVersion = "8.9.10",
-            splitCount = 3
-        ),
-        busy = false,
-        sourceAllowed = true,
-        canConfirm = false,
-        canRetry = false,
-        onSelectFile = {},
-        onEnableSource = {},
-        onConfirm = {},
-        onRetry = {},
-        onReset = {},
-        onInstall = {}
-    )
-}
-

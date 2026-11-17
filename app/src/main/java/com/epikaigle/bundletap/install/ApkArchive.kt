@@ -1,6 +1,8 @@
 package com.epikaigle.bundletap.install
 
 import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -62,7 +64,7 @@ class ApkArchive(private val context: Context) {
     }
 
     fun queryFileSize(uri: Uri): Long {
-        return runCatching {
+        val queried = runCatching {
             context.contentResolver.query(
                 uri, arrayOf(OpenableColumns.SIZE), null, null, null
             )?.use {
@@ -70,6 +72,12 @@ class ApkArchive(private val context: Context) {
                     val index = it.getColumnIndex(OpenableColumns.SIZE)
                     if (index >= 0) it.getLong(index) else 0L
                 } else 0L
+            } ?: 0L
+        }.getOrDefault(0L)
+        if (queried > 0L) return queried
+        return runCatching {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use {
+                it.statSize.coerceAtLeast(0L)
             } ?: 0L
         }.getOrDefault(0L)
     }
@@ -121,11 +129,11 @@ class ApkArchive(private val context: Context) {
                     }.getOrDefault(false)
                     if (isDirectApk) {
                         val baseOutput = File(workspace, "base.apk")
-                        staged.renameTo(baseOutput)
-                        listOf(baseOutput)
+                        val finalApk = if (staged.renameTo(baseOutput)) baseOutput else staged
+                        listOf(finalApk)
                     } else {
                         val selected = ZipFile(staged).use { zip ->
-                            extractSelected(zip, ext, workspace)
+                            extractSelected(zip, workspace)
                         }
                         if (!staged.delete()) staged.deleteOnExit()
                         selected
@@ -133,9 +141,8 @@ class ApkArchive(private val context: Context) {
                 }
             }
             require(apks.isNotEmpty()) { "Aucun APK compatible avec cet appareil." }
-            val info = context.packageManager.getPackageArchiveInfo(
-                apks.first().absolutePath, 0
-            ) ?: throw IllegalArgumentException("APK principal invalide ou endommagé.")
+            val info = getArchiveInfo(apks.first().absolutePath)
+                ?: throw IllegalArgumentException("APK principal invalide ou endommagé.")
             require(info.packageName.isNotBlank()) { "Identifiant d'application invalide." }
             require(info.applicationInfo?.minSdkVersion?.let {
                 it <= Build.VERSION.SDK_INT
@@ -180,7 +187,16 @@ class ApkArchive(private val context: Context) {
         return bitmap
     }
 
-    private fun extractSelected(zip: ZipFile, extension: String, dir: File): List<File> {
+    private fun getArchiveInfo(path: String): PackageInfo? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageArchiveInfo(path, PackageManager.PackageInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageArchiveInfo(path, 0)
+        }
+    }
+
+    private fun extractSelected(zip: ZipFile, dir: File): List<File> {
         val names = mutableSetOf<String>()
         val entries = linkedMapOf<String, ZipEntry>()
         var uncompressedTotal = 0L

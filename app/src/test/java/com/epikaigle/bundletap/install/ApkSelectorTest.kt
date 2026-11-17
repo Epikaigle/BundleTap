@@ -111,6 +111,19 @@ class ApkSelectorTest {
         assertEquals(listOf("standalones/app-arm64_v8a.apk"), actual)
     }
 
+    @Test fun multipleStandalonesPrefersClosestDensityForMatchedAbi() {
+        val actual = ApkSelector.select(
+            listOf(
+                "standalones/app-x86-xxhdpi.apk",
+                "standalones/app-arm64_v8a-mdpi.apk",
+                "standalones/app-arm64_v8a-xxhdpi.apk",
+                "standalones/app-arm64_v8a-ldpi.apk"
+            ),
+            abis, 480, listOf("fr")
+        )
+        assertEquals(listOf("standalones/app-arm64_v8a-xxhdpi.apk"), actual)
+    }
+
     @Test fun inferredBaseFromSingleNonSplitCandidate() {
         val actual = ApkSelector.select(
             listOf(

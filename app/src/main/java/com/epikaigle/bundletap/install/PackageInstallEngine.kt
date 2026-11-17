@@ -21,6 +21,16 @@ class PackageInstallEngine(private val context: Context) {
         var committed = false
         try {
             installer.openSession(sessionId).use { session ->
+                InstallUpdates.publish(context, InstallUpdate(
+                    InstallPhase.INSTALLING, "Installation…",
+                    "",
+                    packageName = prepared.packageName,
+                    splitCount = prepared.apks.size,
+                    appLabel = prepared.appLabel,
+                    appVersion = prepared.appVersion,
+                    fileSizeBytes = InstallUpdates.current.value.fileSizeBytes ?: prepared.totalBytes,
+                    appIcon = prepared.appIcon
+                ))
                 prepared.apks.forEachIndexed { index, apk ->
                     val partName = if (index == 0) "base.apk" else "split_$index.apk"
                     FileInputStream(apk).use { input ->
@@ -39,21 +49,6 @@ class PackageInstallEngine(private val context: Context) {
                     context, sessionId, status,
                     PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
-                val splitMsg = if (prepared.apks.size > 1) {
-                    "${prepared.apks.size} modules compatibles transmis à Android."
-                } else {
-                    "Le fichier a été transmis à Android."
-                }
-                InstallUpdates.publish(context, InstallUpdate(
-                    InstallPhase.INSTALLING, "Installation en cours",
-                    splitMsg,
-                    packageName = prepared.packageName,
-                    splitCount = prepared.apks.size,
-                    appLabel = prepared.appLabel,
-                    appVersion = prepared.appVersion,
-                    fileSizeBytes = prepared.totalBytes,
-                    appIcon = prepared.appIcon
-                ))
                 session.commit(callback.intentSender)
                 committed = true
             }

@@ -5,11 +5,12 @@ title: BundleTap
 
 # BundleTap
 
-**Installateur APK, APKM, APKS et XAPK pour Pixel 7 Pro sous Android 17.**
+**Installateur universel APK, APKM, APKS, XAPK, APKX et ZIP pour Android 12 à 17 (API 31 à 37).**
 
 - [Dépôt source](https://github.com/Epikaigle/BundleTap)
-- [Récupérer une compilation APK](https://github.com/Epikaigle/BundleTap/actions/workflows/android.yml)
+- [Releases officielles signées](https://github.com/Epikaigle/BundleTap/releases)
+- [Récupérer une compilation CI](https://github.com/Epikaigle/BundleTap/actions/workflows/android.yml)
 - [Mettre en place une signature durable](SIGNING.html)
-- [Vérifier le fonctionnement sur Pixel](TESTING.html)
+- [Vérifier le fonctionnement sur appareil](TESTING.html)
 
-L'installation utilise le dialogue de sécurité Android. Traitement entièrement local.
+Interface épurée et responsive. L'installation utilise le dialogue de sécurité Android. Traitement entièrement local.

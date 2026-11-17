@@ -42,8 +42,8 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
             .getOrDefault("Fichier sélectionné").take(160)
         InstallUpdates.publish(ctx, InstallUpdate(
             InstallPhase.NEEDS_PERMISSION,
-            "Autorisation nécessaire",
-            "Autorise BundleTap dans les paramètres Android, puis reviens ici.",
+            "Autorisation requise",
+            "Active les sources inconnues dans Android.",
             name
         ))
         return true
@@ -67,8 +67,8 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
         val fileSize = runCatching { archive.queryFileSize(uri) }.getOrDefault(0L)
         InstallUpdates.publish(context, InstallUpdate(
             InstallPhase.FILE_SELECTED,
-            "Fichier prêt",
-            "Clique sur « Installer » pour lancer l'installation sur ton appareil.",
+            "Prêt",
+            "",
             fileName = filename,
             fileSizeBytes = if (fileSize > 0L) fileSize else null
         ))
@@ -85,11 +85,14 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
         busy = true
         val filename = runCatching { ApkArchive(context).displayName(uri) }
             .getOrDefault("Fichier sélectionné").take(160)
+        val existingSize = InstallUpdates.current.value
+            .takeIf { it.fileName == filename }?.fileSizeBytes
         InstallUpdates.publish(context, InstallUpdate(
             InstallPhase.PREPARING,
-            "Préparation du fichier",
-            "Analyse et sélection des modules compatibles avec ton appareil.",
-            fileName = filename
+            "Préparation…",
+            "",
+            fileName = filename,
+            fileSizeBytes = existingSize
         ))
         installJob = viewModelScope.launch {
             try {
@@ -103,11 +106,18 @@ class InstallerViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                val userMsg = (e as? IllegalArgumentException)?.message ?: "Archive illisible ou corrompue."
+                val rawDetail = e.localizedMessage?.take(400)
+                val techDetail = if (rawDetail != null && rawDetail != userMsg) {
+                    rawDetail
+                } else {
+                    e.stackTraceToString().take(500)
+                }
                 InstallUpdates.publish(context, InstallUpdate(
                     InstallPhase.ERROR,
-                    "Fichier non installé",
-                    "Le fichier n'a pas pu être préparé. Vérifie son format ou essaie une autre version.",
-                    details = e.localizedMessage?.take(400)
+                    "Fichier invalide",
+                    userMsg,
+                    details = techDetail
                 ))
             } finally {
                 busy = false

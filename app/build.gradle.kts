@@ -13,8 +13,8 @@ android {
         applicationId = "com.epikaigle.bundletap"
         minSdk = 31
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -43,8 +43,12 @@ android {
             if (!personalSigningStore.isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("personalRelease")
             }
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
     packaging {

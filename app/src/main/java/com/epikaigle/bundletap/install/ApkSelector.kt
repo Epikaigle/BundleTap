@@ -66,20 +66,31 @@ object ApkSelector {
             if (standalones.isNotEmpty()) {
                 val sortedAbiKeys = abiTokenMap.keys.sortedByDescending { it.length }
                 for (abi in deviceAbis) {
-                    val match = standalones.firstOrNull { path ->
+                    val abiMatches = standalones.filter { path ->
                         val s = stem(path)
                         sortedAbiKeys.any { token ->
                             abiTokenMap[token] == abi && hasToken(s, token)
                         }
                     }
-                    if (match != null) return listOf(match)
+                    if (abiMatches.isNotEmpty()) {
+                        val best = if (abiMatches.size == 1) {
+                            abiMatches.first()
+                        } else {
+                            abiMatches.minWithOrNull(compareBy<String> { path ->
+                                densityFor(path)?.let { d ->
+                                    abs(ln(d.toDouble() / densityDpi.coerceAtLeast(1)))
+                                } ?: Double.MAX_VALUE
+                            }.thenBy { it }) ?: abiMatches.first()
+                        }
+                        return listOf(best)
+                    }
                 }
                 throw IllegalArgumentException(
-                    "Cette archive contient des variantes standalone incompatibles avec ton appareil."
+                    "Variantes standalone incompatibles avec cet appareil."
                 )
             }
             throw IllegalArgumentException(
-                "Cette archive ne contient aucun composant d'installation exploitable."
+                "Aucun composant d'installation exploitable."
             )
         }
 
@@ -123,7 +134,7 @@ object ApkSelector {
 
         val base = hinted ?: bases.singleOrNull() ?: inferredBase
             ?: throw IllegalArgumentException(
-                "APK principal introuvable ou ambigu. Vérifie l'archive."
+                "APK principal introuvable ou ambigu."
             )
 
         val wantedLanguages = locales.flatMap {
@@ -227,13 +238,6 @@ object ApkSelector {
             return normal.substring(0, numMatch.range.first).trimEnd('_')
         }
         return s
-    }
-
-    private fun densityLabel(path: String): String {
-        val s = stem(path)
-        return densityTokens.keys.firstOrNull { hasToken(s, it) }
-            ?: Regex("(?:^|[^a-z0-9])(\\d{3,4})dpi(?:$|[^a-z0-9])").find(s)?.groupValues?.get(1)?.let { "${it}dpi" }
-            ?: ""
     }
 
     private fun languageFor(path: String, masterPrefixes: Set<String>): String? {

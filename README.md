@@ -6,12 +6,13 @@ Installateur personnel universel d'APK, APKM, APKS, XAPK et APKX pour Android 12
 
 ## Nouveautés & Points forts
 
+- **Interface épurée & responsive** : écran minimal guidé par icônes, barre de progression 100 % visuelle, badges adaptatifs (`FlowRow`) et largeur bornée pour smartphones, écrans scindés, tablettes et pliables.
 - **Icône réelle de l'application** : extraction et affichage automatique de l'icône originale de l'application avant et pendant l'installation.
-- **Taille & métadonnées précises** : affichage formaté de la taille de l'archive (Ko, Mo, Go), du nom de package, du numéro de version et du nombre de splits configurés.
-- **Glisser-Déposer (Drag & Drop)** : support complet du drag & drop depuis n'importe quel gestionnaire de fichiers en mode multi-fenêtres ou écran scindé (tablettes et pliables).
+- **Taille & métadonnées précises** : affichage formaté de la taille de l'archive (`Ko`, `Mo`, `Go`), du nom de package, du numéro de version et du nombre de modules sélectionnés.
+- **Glisser-Déposer (Drag & Drop)** : support complet du drag & drop avec retour visuel depuis n'importe quel gestionnaire de fichiers en mode multi-fenêtres ou écran scindé.
+- **APK allégé par R8** : minification R8 et réduction automatique des ressources en release pour une empreinte disque et RAM minimale.
 - **Compatibilité universelle** : compatible de **Android 12 (API 31)** jusqu'à **Android 17 (API 37)**.
-- **Empreinte mémoire ultra-légère** : gestion optimisée de la RAM, mise à l'échelle automatique des icônes pour éviter les fuites de mémoire.
-- **Clé de signature persistante** : toutes les releases officielles sont signées avec la même clé persistante afin de permettre les mises à jour sans désinstaller l'application.
+- **Clé de signature persistante** : toutes les releases officielles sont signées avec la même clé persistante afin de permettre les mises à jour directes sans désinstaller l'application.
 
 ## Formats pris en charge
 
@@ -19,20 +20,19 @@ Installateur personnel universel d'APK, APKM, APKS, XAPK et APKX pour Android 12
 | --- | --- |
 | **APK** | Installation unique classique |
 | **APKM** | Base APK et sélection intelligente des modules ABI (ARM64...), langue et densité d'écran |
-| **XAPK / APKX** | Base déclarée dans manifest.json ou nommée d'après le paquet ; extraction optimisée |
+| **XAPK / APKX** | Base déclarée dans manifest.json ou nommée d'après le paquet ; les fichiers `.obb` éventuels sont ignorés sans bloquer l'installation des APK |
 | **APKS / BAPKS** | Variantes de split APK issues de bundletool |
 | **ZIP** | Détection automatique des archives ZIP contenant des fichiers APK |
 | **AAB** | Non pris en charge directement (doit être compilé en APK/APKS au préalable) |
-| **XAPK avec OBB** | Refus explicite et sécurisé, pas d'installation tronquée sans assets OBB |
 
 Les fichiers d'archive sont d'abord indexés, puis **seuls les APK pertinents** sont extraits et transmis au `PackageInstaller` natif d'Android via un streaming optimisé en flux direct.
 
 ## Installer BundleTap
 
 1. Rends-toi sur la page des [Releases GitHub](https://github.com/Epikaigle/BundleTap/releases).
-2. Télécharge l'APK officiel signé (`BundleTap-v1.3.0.apk`).
-3. Ouvre l'APK sur ton appareil Android et autorise l'installation.
-4. Lance BundleTap, choisis ou glisse ton fichier APK/APKM/APKS/XAPK et valide la confirmation système.
+2. Télécharge l'APK officiel signé (`BundleTap-v1.4.0.apk`).
+3. Ouvre l'APK sur ton appareil Android et autorise l'installation (la mise à jour depuis une version release précédente s'effectue directement sans désinstallation).
+4. Lance BundleTap, choisis ou glisse ton fichier APK/APKM/APKS/XAPK/APKX/ZIP et valide la confirmation système.
 
 ## Confidentialité & Sécurité
 
